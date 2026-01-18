@@ -14,7 +14,7 @@ Windows 11 + Python 3.13 で動作確認済みです。
 
 内部で使用する YomiToku が Python 製であるため、  
 **パス設定さえ正しく行えば Linux / macOS でも動作可能**です。
-
+[YomiToku_GUI](https://github.com/user-attachments/assets/cf45f31a-2695-4c09-9af4-f321a8235b7a "アプリ画面")
 ---
 
 ## 🛠 使用するランタイム
@@ -161,6 +161,7 @@ YomiToku のライセンス範囲内でご利用ください。
 
 - YomiToku を開発された **kotaro-kinoshita 様**  
 - 開発してくれた **Microsoft Copilot**  
+
 
 
 
