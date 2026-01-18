@@ -1,6 +1,6 @@
 # YomiToku_GUI（非公式フロントエンド）
 
-当アプリは、YomiToku（https://kotaro-kinoshita.github.io/yomitoku/）の  
+当アプリは、[YomiToku](https://kotaro-kinoshita.github.io/yomitoku/ "YomiToku")の  
 YomiToku**非公式・非公認フロントエンド GUI アプリケーション**です。
 
 本家 YomiToku 開発者様とは一切関係ありません。  
@@ -174,5 +174,6 @@ YomiToku のライセンス範囲内でご利用ください。
 
 - YomiToku を開発された **kotaro-kinoshita 様**  
 - 開発してくれた **Microsoft Copilot**  
+
 
 
