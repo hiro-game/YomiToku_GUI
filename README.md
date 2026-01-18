@@ -104,7 +104,6 @@ YomiToku 本体の実行ファイルのパスを指定します。
 | 読み仮名付与の ON/OFF | ふりがな生成の有無 |
 | 難読語抽出の ON/OFF | 難しい語彙の抽出 |
 | 詳細ログの出力 | YomiToku の詳細ログを保存 |
-| 上級者向けオプション | YomiToku の追加引数を直接指定可能 |
 
 ※ 実際のオプションは YomiToku 本体の仕様に準拠します。
 
@@ -176,6 +175,7 @@ YomiToku のライセンス範囲内でご利用ください。
 
 - YomiToku を開発された **kotaro-kinoshita 様**  
 - 開発してくれた **Microsoft Copilot**  
+
 
 
 
