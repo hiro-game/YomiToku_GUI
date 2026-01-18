@@ -37,7 +37,9 @@ Windows 11 + Python 3.13 で動作確認済みです。
 設定ファイル名はYomiToku_GUI.ini  
 
 ### 設定項目
-save_settings =  
+```
+save_settings =
+```
 アプリ終了時に、ユーザーが選択した設定値を保存するかどうかを制御します。  
 #####設定値
 - 0 … 設定を保存しない(初期値)
@@ -49,8 +51,9 @@ save_settings =
 #####動作  
 アプリ終了時の設定が YomiToku_GUI.ini に書き込まれます。  
 次回起動時の初期値として起動します。  
-
-save_log =  
+```
+save_log =
+```
 アプリ終了時に、画面下部のログウィンドウの内容を保存するかどうかを制御します。  
 #####設定値
 - 0 … ログを保存しない(初期値)
@@ -64,8 +67,9 @@ save_log =
 アプリと同じフォルダに次の形式で保存されます：  
 - YomiToku_YYYYMMDD_HHMMSS.log
 - ログは毎回新しいファイルとして保存されます
-
-yomitoku_path =  
+```
+yomitoku_path =
+```
 YomiToku 本体の実行ファイルのパスを指定します。  
 #####動作仕様
 
@@ -173,6 +177,7 @@ YomiToku のライセンス範囲内でご利用ください。
 
 - YomiToku を開発された **kotaro-kinoshita 様**  
 - 開発してくれた **Microsoft Copilot**  
+
 
 
 
