@@ -31,7 +31,6 @@ class YomiTokuWorker(QObject):
             input_paths,
             outdir_path,
             fmt,
-            device,
             dpi,
             reading_order,
             pages,
@@ -299,9 +298,7 @@ class YomiTokuGUI(QWidget):
     # 3-2. 状態・設定関連
     # --------------------------------------------------------
     def _init_basic_state(self):
-        self.device = self.detect_device()
-        mode_label = "GPU(CUDA)" if self.device == "cuda" else "CPU"
-        self.setWindowTitle(f"YomiToku GUI - 動作モード: {mode_label}")
+        self.setWindowTitle("YomiToku_GUI")
         self.resize(900, 650)
         self.setAcceptDrops(True)
 
@@ -310,14 +307,6 @@ class YomiTokuGUI(QWidget):
 
         self.input_paths = []
         self.output_dir = None
-
-    def detect_device(self):
-        try:
-            if torch.cuda.is_available():
-                return "cuda"
-        except Exception:
-            pass
-        return "cpu"
 
     def _load_initial_config(self):
         self.load_config()
@@ -996,7 +985,6 @@ class YomiTokuGUI(QWidget):
             self.input_paths,
             outdir_path,
             fmt,
-            self.device,
             dpi,
             reading_order,
             pages,
@@ -1016,7 +1004,7 @@ class YomiTokuGUI(QWidget):
         self.worker.finished.connect(self.enable_ui)
 
         self.thread.start()
-        self.log("=== スレッド開始: GUI はフリーズしません ===")
+        self.log("=== スレッド開始 ===")
 
 # ============================================================
 # 4. Main
@@ -1050,5 +1038,4 @@ if __name__ == "__main__":
 
     gui = YomiTokuGUI()
     gui.show()
-
     sys.exit(app.exec())
