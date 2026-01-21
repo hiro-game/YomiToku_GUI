@@ -8,7 +8,6 @@ import importlib
 from pathlib import Path
 INI_FILE = "YomiToku_GUI.ini"
 
-import torch
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QLabel,
     QFileDialog, QTextEdit, QComboBox, QCheckBox,
@@ -1051,4 +1050,5 @@ if __name__ == "__main__":
 
     gui = YomiTokuGUI()
     gui.show()
+
     sys.exit(app.exec())
