@@ -100,7 +100,7 @@ YomiToku 本体の実行ファイルのパスを指定します。
 
 ## 📄 ライセンスに関する注意書き
 
-本アプリケーション（YomiTokuGUI）は **MIT License** の下で公開されています。  
+本アプリケーション（YomiToku_GUI）は **MIT License** の下で公開されています。  
 ただし、本アプリは外部ツールである **YomiToku（CC BY-NC-SA ライセンス）** を利用するため、  
 以下の点にご注意ください。
 
@@ -162,6 +162,7 @@ YomiToku のライセンス範囲内でご利用ください。
 
 - YomiToku を開発された **kotaro-kinoshita 様**  
 - 開発してくれた **Microsoft Copilot**  
+
 
 
 
