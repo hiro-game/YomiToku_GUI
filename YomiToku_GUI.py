@@ -16,6 +16,51 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIntValidator, QFontMetrics, QFont
 from PySide6.QtCore import Qt, QThread, QObject, Signal
 from PySide6.QtWidgets import QProxyStyle, QStyle
+# switch_widget.py
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QRect, QSize
+from PySide6.QtGui import QColor, QPainter, QBrush, QPen
+class SwitchWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._checked = False
+        self.setFixedSize(42, 20)
+
+    def sizeHint(self):
+        return QSize(42, 20)
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, value: bool):
+        self._checked = bool(value)
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._checked = not self._checked
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 背景色
+        bg_color = QColor(160, 160, 160) if not self._checked else QColor(210, 210, 210)
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(self.rect(), 4, 4)
+
+        # ハンドル
+        handle_size = 16
+        y = (self.height() - handle_size) // 2
+        x = self.width() - handle_size - 2 if self._checked else 2
+
+        handle_rect = QRect(x, y, handle_size, handle_size)
+
+        painter.setBrush(QBrush(QColor(240, 240, 240)))
+        painter.setPen(QPen(QColor(150, 150, 150), 1))
+        painter.drawRoundedRect(handle_rect, 4, 4)
 
 # ============================================================
 # 2. Worker クラス（バックエンド処理）
@@ -116,28 +161,28 @@ class YomiTokuGUI(QWidget):
 # --------------------------------------------------------
     def __init__(self):
         super().__init__()
-    
+
         font = QFont()
         font.setPointSize(12)
         self.setFont(font)
-    
+
         self._init_basic_state()
         self._build_ui()
         self._load_initial_config()
-    
+
         # ★ 設定を UI に反映（これが抜けていた）
         self.load_all_settings()
-    
+
         # ★ YomiToku のパスを読み込む
         self.load_yomitoku_path()
-    
+
         self.adjustSize()
         self.setFixedSize(self.size())
-    
+
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.log(f"=== App started at {timestamp} ===")
-        
+
     # --------------------------------------------------------
     # ★ YomiToku のパスを読み込む（初回は自動取得）
     #    - 設定ファイルに有効なパスがあればそれを最優先
@@ -310,10 +355,10 @@ class YomiTokuGUI(QWidget):
 
     def _load_initial_config(self):
         self.load_config()
-    
+
         if "Settings" in self.config and "output_dir" in self.config["Settings"]:
             self.output_dir = Path(self.config["Settings"]["output_dir"])
-    
+
         # Settings セクション（保存フラグ）
         self.save_settings_flag = self.config.get("Settings", "save_settings", fallback="1") == "1"
         self.save_log_flag = self.config.get("Settings", "save_log", fallback="0") == "1"
@@ -334,14 +379,14 @@ class YomiTokuGUI(QWidget):
 
     def save_all_settings(self):
         cfg = self.config
-    
+
         if "Settings" not in cfg:
             cfg["Settings"] = {}
-    
+
         s = cfg["Settings"]
         s["save_settings"] = "1" if self.save_settings_flag else "0"
         s["save_log"] = "1" if self.save_log_flag else "0"
-        
+
         # 中部の設定内容
         s["format"] = str(self.format_box.currentIndex())
         s["reading_order"] = str(self.direction_box.currentIndex())
@@ -349,58 +394,58 @@ class YomiTokuGUI(QWidget):
         s["pages"] = self.pages_input.text()
         s["figure_width"] = self.figure_width_input.text()
         s["figure_dir"] = self.figure_dir_input.text()
-    
+
         # チェックボックス類（UI の変数名に完全一致）
         s["figure"] = "1" if self.figure_check.isChecked() else "0"
         s["table"] = "1" if self.table_check.isChecked() else "0"
         s["lite"] = "1" if self.lite_check.isChecked() else "0"
         s["vis"] = "1" if self.vis_check.isChecked() else "0"
         s["figure_letter"] = "1" if self.figure_letter_check.isChecked() else "0"
-    
+
         # ignore_line_break / combine / ignore_meta は UI に存在しないため削除
         # 必要なら UI に追加してから保存処理を復活させる
-    
+
         self.save_config()
 
     def load_all_settings(self):
         cfg = self.config
         if "Settings" not in cfg:
             return
-    
+
         s = cfg["Settings"]
-    
+
         # 中部の設定内容
         if "format" in s:
             self.format_box.setCurrentIndex(int(s["format"]))
-    
+
         if "reading_order" in s:
             self.direction_box.setCurrentIndex(int(s["reading_order"]))
-    
+
         if "dpi" in s:
             self.dpi_box.setCurrentText(s["dpi"])
-    
+
         if "pages" in s:
             self.pages_input.setText(s["pages"])
-    
+
         if "figure_width" in s:
             self.figure_width_input.setText(s["figure_width"])
-    
+
         if "figure_dir" in s:
             self.figure_dir_input.setText(s["figure_dir"])
-    
+
         # チェックボックス類
         if "figure" in s:
             self.figure_check.setChecked(s["figure"] == "1")
-    
+
         if "table" in s:
             self.table_check.setChecked(s["table"] == "1")
-    
+
         if "lite" in s:
             self.lite_check.setChecked(s["lite"] == "1")
-    
+
         if "vis" in s:
             self.vis_check.setChecked(s["vis"] == "1")
-    
+
         if "figure_letter" in s:
             self.figure_letter_check.setChecked(s["figure_letter"] == "1")
 
@@ -548,12 +593,15 @@ class YomiTokuGUI(QWidget):
         """
         # 1 行目：DPI / 出力形式 / 図抽出 / 表抽出
 
+        # ▼▼▼ DPI(px) ▼▼▼
         dpi_layout = QHBoxLayout()
         dpi_layout.setContentsMargins(0, 0, 0, 0)
-        dpi_layout.setSpacing(0)
+        dpi_layout.setSpacing(4)
 
-        dpi_label = QLabel("DPI(px):")
-        dpi_layout.addWidget(dpi_label, alignment=Qt.AlignVCenter)
+        dpi_label = QLabel("DPI(px)：")
+        dpi_layout.addWidget(dpi_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        dpi_layout.addStretch(1)
 
         self.dpi_box = QComboBox()
         self.dpi_box.setEditable(True)
@@ -566,69 +614,181 @@ class YomiTokuGUI(QWidget):
             "PDF を読み込む際の解像度です。<br>"
             "値を上げると精度は向上しますが、処理が重くなります。"
         )
-        dpi_layout.addWidget(self.dpi_box, alignment=Qt.AlignVCenter)
+
+        dpi_wrap = QWidget()
+        dpi_wrap.setContentsMargins(0, 0, 10, 0)  # ★ 右マージン 10px
+        dpi_wrap_layout = QHBoxLayout(dpi_wrap)
+        dpi_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        dpi_wrap_layout.addWidget(self.dpi_box)
+
+        dpi_layout.addWidget(dpi_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
         dpi_widget = QWidget()
         dpi_widget.setLayout(dpi_layout)
-        grid.addWidget(dpi_widget, 0, 0, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        grid.addWidget(dpi_widget, 0, 0, alignment=Qt.AlignVCenter)
 
+
+        # ▼▼▼ 出力形式 ▼▼▼
         fmt_layout = QHBoxLayout()
         fmt_layout.setContentsMargins(0, 0, 0, 0)
-        fmt_layout.setSpacing(0)
+        fmt_layout.setSpacing(4)
 
-        fmt_layout.addWidget(QLabel("出力形式:"))
+        fmt_label = QLabel("出力形式：")
+        fmt_layout.addWidget(fmt_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        fmt_layout.addStretch(1)
 
         self.format_box = QComboBox()
         self.format_box.addItems(["html", "md", "json", "csv", "pdf"])
         self.format_box.setCurrentText("pdf")
         self.format_box.setFixedWidth(80)
         self.format_box.setFixedHeight(28)
-        self.format_box.setToolTip(
-            "OCR結果の保存形式を選択"
-        )
-        fmt_layout.addWidget(self.format_box)
+        self.format_box.setToolTip("OCR結果の保存形式を選択")
+
+        fmt_wrap = QWidget()
+        fmt_wrap.setContentsMargins(0, 0, 10, 0)  # ★ 右マージン 10px
+        fmt_wrap_layout = QHBoxLayout(fmt_wrap)
+        fmt_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        fmt_wrap_layout.addWidget(self.format_box)
+
+        fmt_layout.addWidget(fmt_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
         fmt_widget = QWidget()
         fmt_widget.setLayout(fmt_layout)
-        grid.addWidget(fmt_widget, 0, 1, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        grid.addWidget(fmt_widget, 0, 1, alignment=Qt.AlignVCenter)
 
-        self.figure_check = QCheckBox("図を抽出する")
+        # ▼▼▼ 図を抽出する（ラベル + スイッチ） ▼▼▼
+        fig_layout = QHBoxLayout()
+        fig_layout.setContentsMargins(0, 0, 10, 0)
+        fig_layout.setSpacing(4)
+
+        fig_label = QLabel("図を抽出する：")
+        fig_layout.addWidget(fig_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        fig_layout.addStretch(1)
+
+        self.figure_check = SwitchWidget()
         self.figure_check.setToolTip(
             "画像内の図形・イラストを検出し、個別の画像として保存します。"
         )
-        grid.addWidget(self.figure_check, 0, 2, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.table_check = QCheckBox("表を抽出する")
+        fig_layout.addWidget(self.figure_check, alignment=Qt.AlignRight | Qt.AlignVCenter)
+        fig_widget = QWidget()
+        fig_widget.setLayout(fig_layout)
+        grid.addWidget(fig_widget, 0, 2, alignment=Qt.AlignVCenter)
+
+        # ▼▼▼ 表を抽出する（ラベル + スイッチ） ▼▼▼
+        tbl_layout = QHBoxLayout()
+        tbl_layout.setContentsMargins(0, 0, 10, 0)
+        tbl_layout.setSpacing(4)
+
+        tbl_label = QLabel("表を抽出する：")
+        tbl_layout.addWidget(tbl_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        tbl_layout.addStretch(1)
+
+        self.table_check = SwitchWidget()
         self.table_check.setToolTip(
             "画像内の表を検出し、テキストとして構造化された表データに変換します。"
         )
-        grid.addWidget(self.table_check, 0, 3, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        tbl_layout.addWidget(self.table_check, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        tbl_widget = QWidget()
+        tbl_widget.setLayout(tbl_layout)
+        grid.addWidget(tbl_widget, 0, 3, alignment=Qt.AlignVCenter)
 
         # 2 行目：高速モード / 解析結果 / 図中文字 / 図幅
+        # ▼▼▼ 2 行目：高速モード ▼▼▼
+        lite_layout = QHBoxLayout()
+        lite_layout.setContentsMargins(0, 0, 0, 0)
+        lite_layout.setSpacing(4)
 
-        self.lite_check = QCheckBox("高速モード")
+        lite_label = QLabel("高速モード：")
+        lite_layout.addWidget(lite_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        lite_layout.addStretch(1)
+
+        self.lite_check = SwitchWidget()
+        self.lite_check.setContentsMargins(0, 0, 10, 0)
         self.lite_check.setToolTip(
             "一部の解析処理を簡略化し、処理速度を優先します。"
         )
-        grid.addWidget(self.lite_check, 1, 0, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.vis_check = QCheckBox("解析結果を出力")
+        # ラップして右マージンを確実に反映
+        lite_wrap = QWidget()
+        lite_wrap.setContentsMargins(0, 0, 10, 0)
+        lite_wrap_layout = QHBoxLayout(lite_wrap)
+        lite_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        lite_wrap_layout.addWidget(self.lite_check)
+
+        lite_layout.addWidget(lite_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        lite_widget = QWidget()
+        lite_widget.setLayout(lite_layout)
+        grid.addWidget(lite_widget, 1, 0, alignment=Qt.AlignVCenter)
+
+
+        # ▼▼▼ 解析結果を出力 ▼▼▼
+        vis_layout = QHBoxLayout()
+        vis_layout.setContentsMargins(0, 0, 0, 0)
+        vis_layout.setSpacing(4)
+
+        vis_label = QLabel("解析結果を出力：")
+        vis_layout.addWidget(vis_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        vis_layout.addStretch(1)
+
+        self.vis_check = SwitchWidget()
+        self.vis_check.setContentsMargins(0, 0, 10, 0)
         self.vis_check.setToolTip(
             "解析時の検出結果を可視化した補助的な画像を出力します。"
         )
-        grid.addWidget(self.vis_check, 1, 1, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.figure_letter_check = QCheckBox("図の中の文字を抽出")
+        vis_wrap = QWidget()
+        vis_wrap.setContentsMargins(0, 0, 10, 0)
+        vis_wrap_layout = QHBoxLayout(vis_wrap)
+        vis_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        vis_wrap_layout.addWidget(self.vis_check)
+
+        vis_layout.addWidget(vis_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        vis_widget = QWidget()
+        vis_widget.setLayout(vis_layout)
+        grid.addWidget(vis_widget, 1, 1, alignment=Qt.AlignVCenter)
+
+
+        # ▼▼▼ 図の中の文字を抽出 ▼▼▼
+        fig_letter_layout = QHBoxLayout()
+        fig_letter_layout.setContentsMargins(0, 0, 0, 0)
+        fig_letter_layout.setSpacing(4)
+
+        fig_letter_label = QLabel("図の中の文字を抽出：")
+        fig_letter_layout.addWidget(fig_letter_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        fig_letter_layout.addStretch(1)
+
+        self.figure_letter_check = SwitchWidget()
+        self.figure_letter_check.setContentsMargins(0, 0, 10, 0)
         self.figure_letter_check.setToolTip(
             "図やイラスト内の文字を抽出します。"
         )
-        grid.addWidget(self.figure_letter_check, 1, 2, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
+        fig_letter_wrap = QWidget()
+        fig_letter_wrap.setContentsMargins(0, 0, 10, 0)
+        fig_letter_wrap_layout = QHBoxLayout(fig_letter_wrap)
+        fig_letter_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        fig_letter_wrap_layout.addWidget(self.figure_letter_check)
+
+        fig_letter_layout.addWidget(fig_letter_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        fig_letter_widget = QWidget()
+        fig_letter_widget.setLayout(fig_letter_layout)
+        grid.addWidget(fig_letter_widget, 1, 2, alignment=Qt.AlignVCenter)
+
+        # ▼▼▼ 図・表の幅(px)▼▼▼
         width_layout = QHBoxLayout()
         width_layout.setContentsMargins(0, 0, 0, 0)
         width_layout.setSpacing(0)
 
-        width_layout.addWidget(QLabel("図・表の幅(px):"))
+        width_layout.addWidget(QLabel("図・表の幅(px)："))
 
         self.figure_width_input = QLineEdit()
         self.figure_width_input.setValidator(QIntValidator(1, 5000))
@@ -645,7 +805,6 @@ class YomiTokuGUI(QWidget):
         grid.addWidget(width_widget, 1, 3, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
         # 3 行目：書字方向 / ページ指定 / 保存先
-
         direction_layout = QHBoxLayout()
         direction_layout.setContentsMargins(0, 0, 0, 0)
         direction_layout.setSpacing(0)
@@ -718,7 +877,7 @@ class YomiTokuGUI(QWidget):
         save_widget.setLayout(save_layout)
 
         grid.addWidget(save_widget, 2, 2, 1, 2, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-        
+
     # --------------------------------------------------------
     # 3-3-3. 下部 UI（実行ボタン・ログ）
     # --------------------------------------------------------
@@ -844,25 +1003,25 @@ class YomiTokuGUI(QWidget):
     def select_files(self):
         # 最後に開いたフォルダを取得
         last_dir = self.config.get("Settings", "last_file_dir", fallback="")
-    
+
         patterns = " ".join(f"*{ext}" for ext in self.SUPPORTED_EXT)
         name_filter = f"対応ファイル ({patterns})"
-    
+
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "ファイルを選択",
             last_dir,   # ★ ここが重要
             name_filter
         )
-    
+
         if not files:
             return
-    
+
         # ★ 最後に開いたフォルダを保存
         folder = str(Path(files[0]).parent)
         self.config["Settings"]["last_file_dir"] = folder
         self.save_config()
-    
+
         # 選択されたファイルを UI に反映
         self.file_list.clear()
         self.input_paths = []
@@ -871,33 +1030,33 @@ class YomiTokuGUI(QWidget):
             if path.suffix.lower() in self.SUPPORTED_EXT:
                 self.file_list.addItem(str(path))
                 self.input_paths.append(path)
-    
+
         self.reset_run_button()
 
     def select_folder(self):
         last_dir = self.config.get("Settings", "last_folder_dir", fallback="")
-    
+
         folder = QFileDialog.getExistingDirectory(self, "フォルダを選択", last_dir)
         if not folder:
             return
-    
+
         # ★ 最後に選択したフォルダを保存
         self.config["Settings"]["last_folder_dir"] = folder
         self.save_config()
-    
+
         self.file_list.clear()
         self.input_paths = []
-    
+
         path = Path(folder)
         files = sorted(
             f for f in path.iterdir()
             if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXT
         )
-    
+
         for f in files:
             self.file_list.addItem(str(f))
             self.input_paths.append(f)
-    
+
         self.reset_run_button()
 
     def select_output(self):
