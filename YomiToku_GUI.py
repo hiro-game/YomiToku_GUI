@@ -776,8 +776,8 @@ class YomiTokuGUI(QWidget):
         if figure_enabled:
             cmd.append("--figure")
 
-        # --figure_letter
-        if figure_enabled and self.figure_letter_check.isChecked():
+        # --figure_letter（独立オプション）
+        if self.figure_letter_check.isChecked():
             cmd.append("--figure_letter")
 
         # --figure_width
@@ -799,9 +799,9 @@ class YomiTokuGUI(QWidget):
         encoding = self.encoding_box.currentData() or "utf-8"
         cmd += ["--encoding", encoding]
 
-        # combine（pdf のみ）
+        # combine（PDF 入力時のみ）
         is_pdf = input_path.suffix.lower() == ".pdf"
-        if is_pdf and fmt == "pdf" and self.combine_check.isChecked():
+        if is_pdf and self.combine_check.isChecked():
             cmd.append("--combine")
 
         # --ignore_meta
@@ -1051,7 +1051,7 @@ class YomiTokuGUI(QWidget):
         3-4列目: 図の解析設定・保存先
         """
         # --------------------------------------------------------
-        # 1 行目：DPI / ヘッダー等を無視 / 高速モード / 図を抽出
+        # 1 行目：DPI / ヘッダー等を無視 / 軽量モード / 図を抽出
         # --------------------------------------------------------
         # ▼▼▼ DPI(px) ▼▼▼
         dpi_layout = QHBoxLayout()
@@ -1064,9 +1064,9 @@ class YomiTokuGUI(QWidget):
 
         self.dpi_box = QComboBox()
         self.dpi_box.setEditable(True)
-        self.dpi_box.addItems(["100", "200", "400", "600"])
+        self.dpi_box.addItems(["200", "400", "600", "1000", "2000"])
         self.dpi_box.setCurrentText("200")
-        self.dpi_box.lineEdit().setValidator(QIntValidator(1, 2000))
+        self.dpi_box.lineEdit().setValidator(QIntValidator(100, 2147483647))
         self.dpi_box.setFixedWidth(70)
         self.dpi_box.setFixedHeight(28)
         self.dpi_box.setToolTip(
@@ -1103,12 +1103,12 @@ class YomiTokuGUI(QWidget):
         meta_widget.setLayout(meta_layout)
         grid.addWidget(meta_widget, 0, 1, alignment=Qt.AlignVCenter)
 
-        # ▼▼▼ 高速モード ▼▼▼
+        # ▼▼▼ 軽量モード ▼▼▼
         lite_layout = QHBoxLayout()
         lite_layout.setContentsMargins(0, 0, 10, 0)
         lite_layout.setSpacing(4)
 
-        lite_label = QLabel("高速モード：")
+        lite_label = QLabel("軽量モード：")
         lite_layout.addWidget(lite_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         lite_layout.addStretch(1)
 
@@ -1193,23 +1193,27 @@ class YomiTokuGUI(QWidget):
 
         # ★ 表示名と内部値を分離
         items = [
-            ("自動", "auto"),
-            ("横書き", "left2right"),
-            ("縦書き:上→下", "top2bottom"),
-            ("縦書き:右→左", "right2left"),
+            ("自動", "auto", "内容に応じて自動判定します。\n通常はこちらを選んでください"),
+            ("横書き", "left2right", "左から右方向の読み順。\nレシートや保険証など"),
+            ("縦書き:上→下", "top2bottom", "上から下方向の読み順。\n段組みの Word 文書など"),
+            ("縦書き:右→左", "right2left", "右から左方向の読み順。\n縦書き文書に適しています"),
         ]
 
-        for label, value in items:
+        # アイテム追加＋個別ツールチップ設定
+        for index, (label, value, tooltip) in enumerate(items):
             self.direction_box.addItem(label, value)
+            self.direction_box.setItemData(index, tooltip, Qt.ToolTipRole)
 
         # デフォルトは「自動」
         self.direction_box.setCurrentIndex(0)
 
         self.direction_box.setFixedWidth(120)
         self.direction_box.setFixedHeight(28)
+
+        # 全体ツールチップ（補足）
         self.direction_box.setToolTip(
             "画像内テキストの書字方向を指定します。<br>"
-            "自動を選ぶと内容に応じて判定されます。"
+            "各項目にカーソルを合わせると詳細が表示されます。"
         )
 
         dir_wrap_layout.addWidget(self.direction_box)
@@ -1308,7 +1312,7 @@ class YomiTokuGUI(QWidget):
 
         self.combine_check = SwitchWidget()
         self.combine_check.setToolTip(
-            "通常１つのPDFから読み取った複数のページは一つづつのファイルに保存されますが出力がPDF場合に単一のPDFファイルに結合します。"
+            "複数ページのPDFを読み取った場合、通常は複数のファイルに出力されますが、このオプションは単一のファイルにまとめて出力します。"
         )
         combine_wrap_layout.addWidget(self.combine_check)
 
