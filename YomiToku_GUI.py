@@ -1163,9 +1163,7 @@ class YomiTokuGUI(QWidget):
         self.pages_input.setFixedWidth(120)
         self.pages_input.setFixedHeight(28)
         self.pages_input.setToolTip(
-            "PDFから読込むページを指定します。<BR>"
-            "1P、3P～5Pを読み込む場合<BR>例：1,3-5。"
-            "　(0か空白で全選択)"
+            "PDFから読込むページを指定します。\n1P、3P～5Pを読み込む場合\n例：1,3-5　(0か空白で全選択)"
         )
         page_wrap_layout.addWidget(self.pages_input)
 
