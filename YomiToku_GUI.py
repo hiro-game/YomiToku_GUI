@@ -518,6 +518,12 @@ class YomiTokuGUI(QWidget):
             # Settings 以外はそのまま残す
             new_lines.append(line)
 
+            # 書き戻し前に空行を除去
+            new_lines = [line for line in new_lines if line.strip() != ""]
+
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+
         # 書き戻し
         with open(self.config_path, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
@@ -781,11 +787,13 @@ class YomiTokuGUI(QWidget):
 
         # --figure_dir
         if figure_enabled:
-            fig_dir = ""
-            if hasattr(self, "figure_dir_input"):
-                fig_dir = self.figure_dir_input.text().strip()
+            # ini の値をそのまま使う
+            fig_dir = getattr(self, "figure_dir", "")
+
+            # ini にも無ければ outdir を使う
             if not fig_dir:
                 fig_dir = str(outdir)
+
             cmd += ["--figure_dir", fig_dir]
 
         encoding = self.encoding_box.currentData() or "utf-8"
@@ -1171,18 +1179,18 @@ class YomiTokuGUI(QWidget):
         dir_layout = QHBoxLayout()
         dir_layout.setContentsMargins(0, 0, 0, 0)
         dir_layout.setSpacing(4)
-        
+
         dir_label = QLabel("書字方向：")
         dir_layout.addWidget(dir_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         dir_layout.addStretch(1)
-        
+
         dir_wrap = QWidget()
         dir_wrap.setContentsMargins(0, 0, 10, 0)
         dir_wrap_layout = QHBoxLayout(dir_wrap)
         dir_wrap_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.direction_box = QComboBox()
-        
+
         # ★ 表示名と内部値を分離
         items = [
             ("自動", "auto"),
@@ -1190,27 +1198,27 @@ class YomiTokuGUI(QWidget):
             ("縦書き:上→下", "top2bottom"),
             ("縦書き:右→左", "right2left"),
         ]
-        
+
         for label, value in items:
             self.direction_box.addItem(label, value)
-        
+
         # デフォルトは「自動」
         self.direction_box.setCurrentIndex(0)
-        
+
         self.direction_box.setFixedWidth(120)
         self.direction_box.setFixedHeight(28)
         self.direction_box.setToolTip(
             "画像内テキストの書字方向を指定します。<br>"
             "自動を選ぶと内容に応じて判定されます。"
         )
-        
+
         dir_wrap_layout.addWidget(self.direction_box)
         dir_layout.addWidget(dir_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
-        
+
         dir_widget = QWidget()
         dir_widget.setLayout(dir_layout)
         grid.addWidget(dir_widget, 1, 1, alignment=Qt.AlignVCenter)
-        
+
         # ▼▼▼ 文字コード ▼▼▼
         enc_layout = QHBoxLayout()
         enc_layout.setContentsMargins(0, 0, 0, 0)
@@ -1340,18 +1348,18 @@ class YomiTokuGUI(QWidget):
         fmt_layout = QHBoxLayout()
         fmt_layout.setContentsMargins(0, 0, 0, 0)
         fmt_layout.setSpacing(4)
-        
+
         fmt_label = QLabel("出力形式：")
         fmt_layout.addWidget(fmt_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         fmt_layout.addStretch(1)
-        
+
         fmt_wrap = QWidget()
         fmt_wrap.setContentsMargins(0, 0, 10, 0)
         fmt_wrap_layout = QHBoxLayout(fmt_wrap)
         fmt_wrap_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.format_box = QComboBox()
-        
+
         # ★ 表示名と内部値を分離
         items = [
             ("HTML", "html"),
@@ -1360,10 +1368,10 @@ class YomiTokuGUI(QWidget):
             ("CSV", "csv"),
             ("PDF", "pdf"),
         ]
-        
+
         for label, value in items:
             self.format_box.addItem(label, value)
-        
+
         # デフォルトは PDF
         index = self.format_box.findData("pdf")
         if index >= 0:
@@ -1373,14 +1381,14 @@ class YomiTokuGUI(QWidget):
         self.format_box.setFixedWidth(80)
         self.format_box.setFixedHeight(28)
         self.format_box.setToolTip("OCR結果の保存形式を選択します。")
-        
+
         fmt_wrap_layout.addWidget(self.format_box)
         fmt_layout.addWidget(fmt_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
-        
+
         fmt_widget = QWidget()
         fmt_widget.setLayout(fmt_layout)
         grid.addWidget(fmt_widget, 2, 2, alignment=Qt.AlignVCenter)
-        
+
         # ▼▼▼ 図の幅(px) ▼▼▼
         width_layout = QHBoxLayout()
         width_layout.setContentsMargins(0, 0, 0, 0)
