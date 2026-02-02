@@ -1,28 +1,30 @@
 # ============================================================
 # 1. import 群
 # ============================================================
-import os
 import subprocess
 import configparser
-import importlib
 import sys
-
 from pathlib import Path
-INI_FILE = "YomiToku_GUI.ini"
 
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel,
-    QFileDialog, QTextEdit, QComboBox, QCheckBox,
-    QLineEdit, QHBoxLayout, QListWidget, QGridLayout
+    QApplication, QWidget,
+    QVBoxLayout, QHBoxLayout, QGridLayout,
+    QPushButton, QLabel, QLineEdit,
+    QComboBox, QListWidget, QTextEdit,
+    QFileDialog
 )
-from PySide6.QtGui import QIntValidator, QFontMetrics, QFont
-from PySide6.QtCore import Qt, QThread, QObject, Signal
-from PySide6.QtWidgets import QProxyStyle, QStyle
 
-# switch_widget.py
-from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QRect, QSize
-from PySide6.QtGui import QColor, QPainter, QBrush, QPen
+from PySide6.QtGui import (
+    QIntValidator,QFont,
+    QPainter, QColor, QBrush, QPen
+)
+
+from PySide6.QtCore import (
+    Qt, QThread, QObject, Signal,
+    QRect, QSize
+)
+
+INI_FILE = "YomiToku_GUI.ini"
 
 # ============================================================
 # 2. クラス：SwitchWidget（ON/OFF スイッチ UI）
@@ -89,34 +91,6 @@ class SwitchWidget(QWidget):
         painter.drawRoundedRect(handle_rect, 4, 4)
 
 # ============================================================
-# 3. 関数：detect_device（PyTorch のデバイス自動判定）
-# ============================================================
-def detect_device():
-    """
-    初回起動時のみ呼ばれる。
-    PyTorch を import し、利用可能なデバイスを判定して返す。
-    2 回目以降は ini の値を使うため、この関数は呼ばれない。
-    """
-
-    try:
-        import torch
-    except ImportError:
-        return "cpu"
-
-    # CUDA
-    if torch.cuda.is_available():
-        return "cuda"
-
-    # 将来の NPU / iGPU 対応（仮）
-    if hasattr(torch, "npu") and torch.npu.is_available():
-        return "npu"
-
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return "xpu"
-
-    return "cpu"
-
-# ============================================================
 # 2. Worker クラス（バックエンド処理）
 # ============================================================
 class YomiTokuWorker(QObject):
@@ -125,533 +99,796 @@ class YomiTokuWorker(QObject):
     progress_signal = Signal(int)
     finished = Signal()
 
-    # 2-1. 初期化（パラメータ保存のみ）
-    # --------------------------------------------------------
-    def __init__(
-        self,
-        exe_path,
-        input_paths,
-        outdir_path,
-        fmt,
-        dpi,
-        reading_order,
-        pages,
-        figure,
-        figure_letter,
-        figure_width,
-        combine,
-        ignore_line_break,
-        ignore_meta,
-        encoding,
-        lite,
-        vis,
-        device,
-        font_path,
-        td_cfg,
-        tr_cfg,
-        lp_cfg,
-        tsr_cfg,
-        figure_dir
-    ):
+    def __init__(self, exe_path, cmd_list):
+        """
+        exe_path : YomiToku の実行ファイルパス
+        cmd_list : create_Option が生成した「引数リスト」の配列
+                   例: [
+                        ["-o", "out", "-f", "pdf", ... , "input1.pdf"],
+                        ["-o", "out", "-f", "pdf", ... , "input2.pdf"],
+                      ]
+        """
         super().__init__()
-
         self.exe_path = exe_path
-        self.input_paths = input_paths
-        self.outdir_path = outdir_path
-        self.fmt = fmt
-        self.dpi = dpi
-        self.reading_order = reading_order
-        self.pages = pages
-        self.figure = figure
-        self.figure_letter = figure_letter
-        self.figure_width = figure_width
-        self.figure_dir = figure_dir
-        self.combine = combine
-        self.ignore_line_break = ignore_line_break
-        self.ignore_meta = ignore_meta
-        self.encoding = encoding
-        self.lite = lite
-        self.vis = vis
-        self.device = device
-        self.font_path = font_path
-        self.td_cfg = td_cfg
-        self.tr_cfg = tr_cfg
-        self.lp_cfg = lp_cfg
-        self.tsr_cfg = tsr_cfg
+        self.cmd_list = cmd_list
 
-    # 2-2. 実行処理（run に移動）
-    # --------------------------------------------------------
     def run(self):
-
-        total = len(self.input_paths)
+        total = len(self.cmd_list)
         self.log_signal.emit(f"----- {total} 件の処理を開始 -----")
 
-        for idx, input_path in enumerate(self.input_paths, start=1):
+        for idx, cmd in enumerate(self.cmd_list, start=1):
 
+            # 進捗更新
             progress = int((idx - 1) / total * 100)
             self.progress_signal.emit(progress)
 
-            self.log_signal.emit(f"[{idx}/{total}] 処理中: {input_path}")
+            input_file = cmd[-1]  # create_Option の最後は input_path
+            self.log_signal.emit(f"[{idx}/{total}] 処理中: {input_file}")
 
-            # ★ 実行コマンドの構築
-            cmd = [
-                str(self.exe_path),
-                str(input_path),
-                "-o", str(self.outdir_path),
-                "-f", self.fmt,
-                "-d", self.device
-            ]
+            # exe_path を先頭に付けた完全コマンド
+            full_cmd = [str(self.exe_path)] + cmd
 
-            # ★ オプション追加
-            if self.dpi:
-                cmd += ["--dpi", self.dpi]
+            # ログ出力
+            self.log_signal.emit("実行コマンド: " + " ".join(full_cmd))
 
-            if self.reading_order:
-                cmd += ["--reading_order", self.reading_order]
-
-            if self.pages:
-                cmd += ["--pages", self.pages]
-
-            if self.figure:
-                cmd.append("--figure")
-
-            if self.figure_letter:
-                cmd.append("--figure_letter")
-
-            if self.figure_width:
-                cmd += ["--figure_width", self.figure_width]
-
-            if self.figure_dir:
-                cmd += ["--figure_dir", self.figure_dir]
-
-            if self.combine:
-                cmd.append("--combine")
-
-            if self.ignore_line_break:
-                cmd.append("--ignore_line_break")
-
-            if self.ignore_meta:
-                cmd.append("--ignore_meta")
-
-            if self.encoding:
-                cmd += ["--encoding", self.encoding]
-
-            if self.lite:
-                cmd.append("--lite")
-
-            if self.vis:
-                cmd.append("--vis")
-
-            if self.td_cfg:
-                cmd += ["--td_cfg", self.td_cfg]
-
-            if self.tr_cfg:
-                cmd += ["--tr_cfg", self.tr_cfg]
-
-            if self.lp_cfg:
-                cmd += ["--lp_cfg", self.lp_cfg]
-
-            if self.tsr_cfg:
-                cmd += ["--tsr_cfg", self.tsr_cfg]
-
-            if self.font_path:
-                cmd += ["--font_path", self.font_path]
-
-            # ★ 最終コマンドをログ出力
-            self.log_signal.emit("実行コマンド: " + " ".join(cmd))
-
-            # ★ サブプロセス実行
+            # サブプロセス実行
             process = subprocess.Popen(
-                cmd,
+                full_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True
             )
-
-            for line in process.stdout:
-                self.log_signal.emit(line.rstrip())
+            if process.stdout:
+                for line in process.stdout:
+                    self.log_signal.emit(line.rstrip())
 
             process.wait()
-            self.log_signal.emit(f"完了: {input_path} (終了コード: {process.returncode})")
+            self.log_signal.emit(f"完了: {input_file} (終了コード: {process.returncode})")
 
+        # 最終進捗
         self.progress_signal.emit(100)
         self.log_signal.emit("----- 全ての処理が完了しました -----")
         self.finished.emit()
 
-# ============================================================
-# 3. GUI 本体
-# ============================================================
 class YomiTokuGUI(QWidget):
 
-    # ★ 対応拡張子（ドラッグ＆ドロップやファイル選択で使用）
+    # 対応拡張子
     SUPPORTED_EXT = [".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"]
 
     # --------------------------------------------------------
-    # 3-1. 初期化（GUI 全体の初期セットアップ）
+    # 3-1. 初期化
     # --------------------------------------------------------
     def __init__(self):
         super().__init__()
 
-        # ★ GUI 全体のフォント設定
+        # フォント
         font = QFont()
         font.setPointSize(12)
         self.setFont(font)
 
-        # ★ ini_path と config を最初に作る（重要）
-        #   - load_all_settings() で ini を読むため、必ず最初に作成する
-        self.ini_path = os.path.join(os.path.dirname(__file__), "YomiToku_GUI.ini")
+        # ini / config
+        self.config_path = Path("YomiToku_GUI.ini")
         self.config = configparser.ConfigParser()
 
-        # ★ 内部状態の初期化（フラグや変数の初期値）
+        # 内部状態
         self._init_basic_state()
 
-        # ★ UI 構築（ウィジェット・レイアウトの生成）
+        # UI 構築（★中身は既存コードをそのまま使う）
         self._build_ui()
 
-        # ★ 初期設定の読み込み（UI の初期値を設定）
-        self._load_initial_config()
+        # 設定ファイルの確認・初期生成
+        self.check_Config()
 
-        # ★ 設定を UI に反映（ini_path があるので安全）
-        #   - save_settings / save_log / yomitoku_path / device などを読み込む
-        self.load_all_settings()
+        # 設定読み込み
+        self.load_Fixed()
+        self.load_Settings()
 
-        # ★ YomiToku のパスを読み込む（初回は自動検出）
-        self.load_yomitoku_path()
-
-        # ★ ウィンドウサイズを内容に合わせて固定
+        # ウィンドウサイズ固定
         self.adjustSize()
         self.setFixedSize(self.size())
 
-        # ★ 起動ログ
+        # 起動ログ
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.log(f"=== App started at {timestamp} ===")
 
     # --------------------------------------------------------
-    # 3-2. YomiToku のパスを読み込む（初回は自動取得）
-    #    - 設定ファイルに有効なパスがあればそれを最優先
-    #    - 無ければ自動検出（site → where/which → ~/.local/bin）
-    # --------------------------------------------------------
-    def load_yomitoku_path(self):
-        cfg = self.config
-
-        # ★ Settings セクションが無い場合は作成
-        if "Settings" not in cfg:
-            cfg["Settings"] = {}
-
-        settings = cfg["Settings"]
-
-        # --------------------------------------------------------
-        # 1. 設定ファイルにパスがある場合はそれを最優先（ユーザーの意思を尊重）
-        # --------------------------------------------------------
-        if "yomitoku_path" in settings:
-            raw = settings["yomitoku_path"].strip()
-
-            if raw:
-                path = Path(raw)
-
-                # ★ 有効なパスなら即採用（自動検出は行わない）
-                if path.exists():
-                    self.yomitoku_path = path
-                    return
-
-                # パスが存在しない場合のみ自動検出へ
-                self.log(f"設定ファイルの YomiToku パスが存在しません: {raw}")
-
-            else:
-                self.log("設定ファイルに yomitoku_path が空で保存されています。")
-
-        else:
-            self.log("設定ファイルに yomitoku_path がありません。")
-
-        # --------------------------------------------------------
-        # 2. 自動検出（site → Scripts/bin → where/which）
-        # --------------------------------------------------------
-        auto_path = self.find_yomitoku_exe()
-
-        if auto_path and auto_path.exists():
-            self.yomitoku_path = auto_path
-
-            # ★ 設定にまだ値が無い場合のみ保存（既存設定は上書きしない）
-            if not settings.get("yomitoku_path", "").strip():
-                settings["yomitoku_path"] = str(auto_path)
-                self.save_config()
-                self.log(f"YomiToku パスを自動検出し、設定に保存しました: {auto_path}")
-            else:
-                self.log(f"YomiToku パスを自動検出しました（設定は既存値を維持）: {auto_path}")
-
-            return
-
-        # --------------------------------------------------------
-        # 3. 自動検出できなかった場合
-        # --------------------------------------------------------
-        self.yomitoku_path = None
-        self.log("YomiToku のパスを自動検出できませんでした。設定画面から手動で指定してください。")
-
-    # --------------------------------------------------------
-    # 3-4. YomiToku 実行ファイルの自動検出
-    #    - site.getsitepackages / getusersitepackages を利用
-    #    - Scripts / bin を総当たり
-    #    - where / which をフォールバックとして使用
-    #    - 複数見つかった場合は「より新しい Python バージョン」を優先
-    # --------------------------------------------------------
-    def find_yomitoku_exe(self):
-
-        candidates = []
-
-        # ★ 候補リストに追加（重複排除）
-        def add_candidate(p: Path):
-            if p and p.exists():
-                p = p.resolve()
-                if p not in candidates:
-                    candidates.append(p)
-
-        # --------------------------------------------------------
-        # 1. site.getsitepackages / getusersitepackages → Scripts/bin を探索
-        # --------------------------------------------------------
-        bases = []
-
-        try:
-            bases.extend(site.getsitepackages())
-        except Exception:
-            pass
-
-        try:
-            user_site = site.getusersitepackages()
-            if user_site:
-                bases.append(user_site)
-        except Exception:
-            pass
-
-        for base in bases:
-            base_path = Path(base).resolve()
-            parent = base_path.parent
-
-            for scripts_name in ("Scripts", "bin"):
-                folder = parent / scripts_name
-                if not folder.exists():
-                    continue
-
-                if sys.platform.startswith("win"):
-                    exe = folder / "yomitoku.exe"
-                    if exe.exists():
-                        add_candidate(exe)
-                else:
-                    script = folder / "yomitoku"
-                    if script.exists():
-                        add_candidate(script)
-
-        # --------------------------------------------------------
-        # 2. where / which をフォールバックとして使用
-        # --------------------------------------------------------
-        exe_name = "yomitoku.exe" if sys.platform.startswith("win") else "yomitoku"
-        exe = shutil.which(exe_name)
-        if exe:
-            add_candidate(Path(exe))
-
-        # --------------------------------------------------------
-        # 3. Unix 系の ~/.local/bin/yomitoku もチェック
-        # --------------------------------------------------------
-        if not sys.platform.startswith("win"):
-            local_bin = Path.home() / ".local" / "bin" / "yomitoku"
-            if local_bin.exists():
-                add_candidate(local_bin)
-
-        # 候補が無い場合
-        if not candidates:
-            return None
-
-        # --------------------------------------------------------
-        # 4. 複数見つかった場合は「Python バージョンが新しいもの」を優先
-        # --------------------------------------------------------
-        def version_key(p: Path):
-            s = str(p)
-
-            # 例: Python313, python311 など
-            m = re.search(r"[Pp]ython(?:3)?(\d)(\d)", s)
-            if m:
-                return (int(m.group(1)), int(m.group(2)))
-
-            # 例: python3.11, Python3.10 など
-            m = re.search(r"[Pp]ython(\d)\.(\d+)", s)
-            if m:
-                return (int(m.group(1)), int(m.group(2)))
-
-            # バージョン情報が取れない場合は最低優先
-            return (0, 0)
-
-        candidates.sort(key=version_key, reverse=True)
-        return candidates[0]
-
-    # --------------------------------------------------------
-    # 3-5. ログ表示（ログビューに追記）
-    # --------------------------------------------------------
-    def log(self, text):
-        self.log_view.append(text)
-
-    # --------------------------------------------------------
-    # 3-6. 状態・設定関連（初期化）
+    # 基本状態
     # --------------------------------------------------------
     def _init_basic_state(self):
         self.setWindowTitle("YomiToku_GUI")
         self.resize(900, 650)
         self.setAcceptDrops(True)
 
-        # ★ 設定ファイルのパス
-        self.config_path = Path("YomiToku_GUI.ini")
-        self.config = configparser.ConfigParser()
+        self.input_paths: list[Path] = []
+        self.output_dir: Path | None = None
 
-        # ★ 入力ファイル・出力ディレクトリの初期状態
-        self.input_paths = []
-        self.output_dir = None
+        # last_dir 系
+        self.last_file_dir = ""
+        self.last_folder_dir = ""
 
-    # --------------------------------------------------------
-    # 3-7. 初期設定の読み込み（UI 初期値の反映）
-    # --------------------------------------------------------
-    def _load_initial_config(self):
-        self.load_config()
+        # Fixed
+        self.yomitoku_path: Path | None = None
+        self.device: str = ""
 
-        # 出力先ディレクトリ
-        if "Settings" in self.config and "output_dir" in self.config["Settings"]:
-            self.output_dir = Path(self.config["Settings"]["output_dir"])
+        # Advanced
+        self.vis = "0"
+        self.td_cfg = ""
+        self.tf_cfg = ""   # 新 CLI に合わせて tf_cfg として扱う
+        self.lp_cfg = ""
+        self.tsr_cfg = ""
+        self.figure_dir = ""
+        self.font_path = ""
 
-        # 保存フラグ
-        self.save_settings_flag = self.config.get("Settings", "save_settings", fallback="1") == "1"
-        self.save_log_flag = self.config.get("Settings", "save_log", fallback="0") == "1"
+        # Save
+        self.save_settings_flag = False
+        self.save_log_flag = False
 
-    # --------------------------------------------------------
-    # 3-8. 設定ファイルの読み込み
-    # --------------------------------------------------------
-    def load_config(self):
-        if self.config_path.exists():
-            self.config.read(self.config_path, encoding="utf-8")
-        else:
-            # ★ 初回起動時のデフォルト設定
-            self.config["Settings"] = {
-                 "save_settings": "0",
-                 "save_log": "0"
-            }
-            self.save_config()
+        # 進捗
+        self.total_files = 0
 
     # --------------------------------------------------------
-    # 3-9. 設定ファイルの保存
+    # ログ表示
     # --------------------------------------------------------
-    def save_config(self):
+    def log(self, text: str):
+        self.log_view.append(text)
+
+    # --------------------------------------------------------
+    # ini チェック＆補完
+    # --------------------------------------------------------
+    def check_Config(self):
+        # --------------------------------------------------------
+        # 1. ini が無ければ作成（保存は create_Config 内でのみ行われる）
+        # --------------------------------------------------------
+        if not self.config_path.exists():
+            self.create_Config()
+
+        # 常に最新の ini を self.config に読み込む
+        self.config.read(self.config_path, encoding="utf-8")
+
+        # --------------------------------------------------------
+        # 2. セクション存在チェック（補完するが保存はしない）
+        # --------------------------------------------------------
+        for sec in ("Fixed", "Settings", "Advanced", "Save"):
+            if sec not in self.config:
+                self.config[sec] = {}
+
+        # --------------------------------------------------------
+        # 3. Fixed の補完（保存は detect 系に任せる）
+        # --------------------------------------------------------
+        fixed = self.config["Fixed"]
+
+        # yomitoku_path が空なら detect_Path（保存は detect_Path 内）
+        if not fixed.get("yomitoku_path", "").strip():
+            self.detect_Path()  # save_Fixed により self.config も更新される
+
+        # device が "__AUTO__" または空なら detect_Device（保存は detect_Device 内）
+        dev = fixed.get("device", "").strip()
+        if dev == "__AUTO__" or not dev:
+            self.detect_Device()  # save_Fixed により self.config も更新される
+
+        # --------------------------------------------------------
+        # 4. 最後に Fixed / Settings を GUI に反映
+        # --------------------------------------------------------
+        self.load_Fixed()     # self.config → self
+        self.load_Settings()  # self.config → GUI
+
+    # --------------------------------------------------------
+    # ini 作成
+    # --------------------------------------------------------
+    def create_Config(self):
+        cfg = configparser.ConfigParser()
+
+        cfg["Fixed"] = {
+            "yomitoku_path": "",
+            "device": "",
+        }
+
+        cfg["Settings"] = {
+            "format": "pdf",
+            "output_dir": "",
+            "lite": "0",
+            "ignore_line_break": "0",
+            "figure": "0",
+            "figure_letter": "0",
+            "figure_width": "",
+            "encoding": "utf-8",
+            "combine": "0",
+            "ignore_meta": "0",
+            "reading_order": "auto",
+            "dpi": "200",
+            "pages": "",
+            "last_file_dir": "",
+            "last_folder_dir": "",
+        }
+
+        cfg["Advanced"] = {
+            "vis": "0",
+            "td_cfg": "",
+            "tf_cfg": "",
+            "lp_cfg": "",
+            "tsr_cfg": "",
+            "figure_dir": "",
+            "font_path": "",
+        }
+
+        cfg["Save"] = {
+            "save_settings": "0",
+            "save_log": "0",
+        }
+
         with open(self.config_path, "w", encoding="utf-8") as f:
-            self.config.write(f)
+            cfg.write(f)
+
+        self.config = cfg
 
     # --------------------------------------------------------
-    # 3-10. UI の設定値をすべて保存
+    # Fixed 読み込み
     # --------------------------------------------------------
-    def save_all_settings(self):
-        cfg = self.config
+    def load_Fixed(self):
+        fixed = self.config["Fixed"]
 
-        if "Settings" not in cfg:
-            cfg["Settings"] = {}
+        yomitoku_path = fixed.get("yomitoku_path", "").strip()
+        self.yomitoku_path = Path(yomitoku_path) if yomitoku_path else None
 
-        s = cfg["Settings"]
-
-        # 保存フラグ
-        s["save_settings"] = "1" if self.save_settings_flag else "0"
-        s["save_log"] = "1" if self.save_log_flag else "0"
-
-        # 中部の設定内容
-        s["format"] = str(self.format_box.currentIndex())
-        s["reading_order"] = str(self.direction_box.currentIndex())
-        s["dpi"] = self.dpi_box.currentText()
-        s["pages"] = self.pages_input.text()
-        s["figure_width"] = self.figure_width_input.text()
-        s["figure_dir"] = self.figure_dir_input.text()
-
-        # チェックボックス類
-        s["figure"] = "1" if self.figure_check.isChecked() else "0"
-        s["table"] = "1" if self.table_check.isChecked() else "0"
-        s["lite"] = "1" if self.lite_check.isChecked() else "0"
-        s["vis"] = "1" if self.vis_check.isChecked() else "0"
-        s["figure_letter"] = "1" if self.figure_letter_check.isChecked() else "0"
-
-        self.save_config()
+        self.device = fixed.get("device", "").strip()
 
     # --------------------------------------------------------
-    # 3-11. 設定ファイルの内容を UI に反映
+    # Settings 読み込み（ini → GUI）
     # --------------------------------------------------------
-    def load_all_settings(self):
-        cfg = self.config
-        if "Settings" not in cfg:
-            return
+    def load_Settings(self):
+        s = self.config["Settings"]
 
-        s = cfg["Settings"]
+        self.last_file_dir = s.get("last_file_dir", "")
+        self.last_folder_dir = s.get("last_folder_dir", "")
 
-        # ★ device が無い、または空なら探査して追記（初回のみ）
-        if "device" not in s or not s["device"]:
-            device = detect_device()
-            s["device"] = device
-            self.config.set("Settings", "device", device)
+        output_dir = s.get("output_dir", "")
+        self.output_dir = Path(output_dir) if output_dir else None
 
-            # ★ ini_path に保存（初回のみ）
-            with open(self.ini_path, "w", encoding="utf-8") as f:
-                self.config.write(f)
-        else:
-            device = s["device"]
-        self.device = device
-
-        # ★ save_settings=1 のときだけ last_* と output_dir を読み込む
-        if s.get("save_settings", "0") == "1":
-            self.last_file_dir = s.get("last_file_dir", "")
-            self.last_folder_dir = s.get("last_folder_dir", "")
-            self.output_dir = Path(s.get("output_dir", "")) if s.get("output_dir") else None
-        else:
-            self.last_file_dir = ""
-            self.last_folder_dir = ""
-            self.output_dir = None
-
-        # 中部の設定内容
+        # format / reading_order / dpi / pages / figure_width / encoding
         if "format" in s:
-            self.format_box.setCurrentIndex(int(s["format"]))
-
-        if "reading_order" in s:
-            self.direction_box.setCurrentIndex(int(s["reading_order"]))
-
+            value = s["format"]
+            index = self.format_box.findData(value)
+            if index >= 0:
+                self.format_box.setCurrentIndex(index)
+                if "reading_order" in s:
+                    value = s["reading_order"]
+            index = self.direction_box.findData(value)
+            if index >= 0:
+                self.direction_box.setCurrentIndex(index)
         if "dpi" in s:
             self.dpi_box.setCurrentText(s["dpi"])
-
         if "pages" in s:
-            self.page_input.setText(s["pages"])
-
+            self.pages_input.setText(s["pages"])
         if "figure_width" in s:
             self.figure_width_input.setText(s["figure_width"])
+        if "encoding" in s:
+            self.encoding_box.setCurrentText(s["encoding"])
 
-        if "figure_dir" in s:
-            self.figure_dir_input.setText(s["figure_dir"])
-
-        # チェックボックス類
-        if "figure" in s:
-            self.figure_check.setChecked(s["figure"] == "1")
-
-        if "table" in s:
-            self.table_check.setChecked(s["table"] == "1")
-
-        if "lite" in s:
-            self.lite_check.setChecked(s["lite"] == "1")
-
-        # ★ vis_check は GUI に無いので削除（ini の vis は run_yomitoku() で処理）
-        # if "vis" in s:
-        #     self.vis_check.setChecked(s["vis"] == "1")
-
-        if "figure_letter" in s:
-            self.figure_letter_check.setChecked(s["figure_letter"] == "1")
+        # チェックボックス
+        self.figure_check.setChecked(s.get("figure", "0") == "1")
+        self.lite_check.setChecked(s.get("lite", "0") == "1")
+        self.figure_letter_check.setChecked(s.get("figure_letter", "0") == "1")
+        self.ignore_lb_check.setChecked(s.get("ignore_line_break", "0") == "1")
+        self.ignore_meta_check.setChecked(s.get("ignore_meta", "0") == "1")
+        self.combine_check.setChecked(s.get("combine", "0") == "1")
 
     # --------------------------------------------------------
-    # 3-12. ウィンドウ終了時の処理
+    # Advanced 読み込み（ini → 内部変数 / Advanced UI）
+    # --------------------------------------------------------
+    def load_Advanced(self):
+        parser = configparser.ConfigParser()
+        parser.read(self.config_path, encoding="utf-8")
+
+        if "Advanced" not in parser:
+            # Advanced セクションが無い場合はデフォルト値
+            self.vis = "0"
+            self.td_cfg = ""
+            self.tf_cfg = ""
+            self.lp_cfg = ""
+            self.tsr_cfg = ""
+            self.figure_dir = ""
+            self.font_path = ""
+            return
+
+        a = parser["Advanced"]
+
+        self.vis = a.get("vis", "0")
+        self.td_cfg = a.get("td_cfg", "")
+        self.tf_cfg = a.get("tf_cfg", "")
+        self.lp_cfg = a.get("lp_cfg", "")
+        self.tsr_cfg = a.get("tsr_cfg", "")
+        self.figure_dir = a.get("figure_dir", "")
+        self.font_path = a.get("font_path", "")
+
+        # 図保存先 UI がある前提
+        if hasattr(self, "figure_dir_input"):
+            self.figure_dir_input.setText(self.figure_dir)
+
+    # --------------------------------------------------------
+    # Save 読み込み
+    # --------------------------------------------------------
+    def load_Save(self):
+        parser = configparser.ConfigParser()
+        parser.read(self.config_path, encoding="utf-8")
+
+        if "Save" not in parser:
+            self.save_settings_flag = False
+            self.save_log_flag = False
+            return
+
+        s = parser["Save"]
+
+        self.save_settings_flag = s.get("save_settings", "0") == "1"
+        self.save_log_flag = s.get("save_log", "0") == "1"
+
+    # --------------------------------------------------------
+    # Fixed 保存
+    # --------------------------------------------------------
+    def save_Fixed(self):
+        # --- 1) self.config を更新（常に最新の真実にする） ---
+        if "Fixed" not in self.config:
+            self.config.add_section("Fixed")
+
+        self.config["Fixed"]["yomitoku_path"] = str(self.yomitoku_path) if self.yomitoku_path else ""
+        self.config["Fixed"]["device"] = self.device if self.device else ""
+
+        # --- 2) ini を行単位で書き換える ---
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        in_fixed = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Fixed セクション開始
+            if stripped == "[Fixed]":
+                in_fixed = True
+                new_lines.append(line)  # [Fixed] 行そのまま
+
+                # ★ self.config の最新値を書き込む
+                new_lines.append(f"yomitoku_path = {self.config['Fixed']['yomitoku_path']}\n")
+                new_lines.append(f"device = {self.config['Fixed']['device']}\n")
+                continue
+
+            # 次のセクションに入ったら Fixed 終了
+            if in_fixed and stripped.startswith("[") and stripped.endswith("]"):
+                in_fixed = False
+
+            # Fixed セクション中の古い行はスキップ
+            if in_fixed:
+                continue
+
+            new_lines.append(line)
+
+        # --- 3) 書き戻し ---
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
+    # --------------------------------------------------------
+    # Settings 保存（GUI → ini）
+    # --------------------------------------------------------
+    def save_Settings(self):
+        # Settings セクションの新しい内容（公式ヘルプ順）
+        new_settings = []
+        new_settings.append("[Settings]\n")
+        new_settings.append(f"format = {self.format_box.currentData()}\n")
+        new_settings.append(f"output_dir = {self.output_dir or ''}\n")
+        new_settings.append(f"lite = {'1' if self.lite_check.isChecked() else '0'}\n")
+        new_settings.append(f"ignore_line_break = {'1' if self.ignore_lb_check.isChecked() else '0'}\n")
+        new_settings.append(f"figure = {'1' if self.figure_check.isChecked() else '0'}\n")
+        new_settings.append(f"figure_letter = {'1' if self.figure_letter_check.isChecked() else '0'}\n")
+        new_settings.append(f"figure_width = {self.figure_width_input.text()}\n")
+        new_settings.append(f"encoding = {self.encoding_box.currentData()}\n")
+        new_settings.append(f"combine = {'1' if self.combine_check.isChecked() else '0'}\n")
+        new_settings.append(f"ignore_meta = {'1' if self.ignore_meta_check.isChecked() else '0'}\n")
+        new_settings.append(f"reading_order = {self.direction_box.currentData()}\n")
+        new_settings.append(f"dpi = {self.dpi_box.currentText()}\n")
+        new_settings.append(f"pages = {self.pages_input.text()}\n")
+        new_settings.append(f"last_file_dir = {self.last_file_dir}\n")
+        new_settings.append(f"last_folder_dir = {self.last_folder_dir}\n")
+
+        # ini 全体を読み込む
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # 新しい ini を構築
+        new_lines = []
+        inside_settings = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Settings セクション開始
+            if stripped.lower() == "[settings]":
+                inside_settings = True
+                new_lines.extend(new_settings)
+                continue
+
+            # 次のセクションに入ったら Settings 終了
+            if inside_settings and stripped.startswith("[") and stripped.endswith("]"):
+                inside_settings = False
+
+            # Settings 内の古い行はスキップ
+            if inside_settings:
+                continue
+
+            # Settings 以外はそのまま残す
+            new_lines.append(line)
+
+        # 書き戻し
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
+    # --------------------------------------------------------
+    # YomiToku 実行ファイル検出
+    # --------------------------------------------------------
+    def detect_Path(self) -> Path | None:
+
+        exe_name = "yomitoku.exe" if sys.platform.startswith("win") else "yomitoku"
+
+        print("detect_Path: start")
+
+        # --------------------------------------------------------
+        # 1. pip show -f yomitoku
+        # --------------------------------------------------------
+        try:
+            result = subprocess.check_output(
+                ["pip", "show", "-f", "yomitoku"],
+                text=True
+            )
+            location = None
+            rel_exe = None
+
+            for line in result.splitlines():
+                line = line.strip()
+
+                if line.startswith("Location:"):
+                    location = line.split(":", 1)[1].strip()
+
+                # exe_name の末尾一致で誤検出を完全排除
+                if line.endswith(exe_name):
+                    rel_exe = line
+                    break
+
+            if location and rel_exe:
+                exe_path = (Path(location) / rel_exe).resolve()
+                if exe_path.exists():
+                    print(f"detect_Path: found via pip show → {exe_path}")
+                    self.yomitoku_path = str(exe_path)
+                    self.save_Fixed()  # ★ self.config と ini を同期
+                    return exe_path
+        except Exception as e:
+            print("detect_Path pip show error:", e)
+
+        # --------------------------------------------------------
+        # 2. where（Windows）/ which（Linux/Mac）
+        # --------------------------------------------------------
+        try:
+            cmd = ["where", exe_name] if sys.platform.startswith("win") else ["which", exe_name]
+            result = subprocess.check_output(cmd, text=True).strip()
+            if result:
+                p = Path(result)
+                if p.exists():
+                    print(f"detect_Path: found via where/which → {p}")
+                    self.yomitoku_path = str(p)
+                    self.save_Fixed()  # ★ 同期
+                    return p
+        except Exception as e:
+            print("detect_Path where/which error:", e)
+
+        # --------------------------------------------------------
+        # 3. Scripts/bin フォルダ探索
+        # --------------------------------------------------------
+        candidates = []
+
+        if sys.platform.startswith("win"):
+            scripts_dir = Path(sys.executable).parent / "Scripts"
+            candidates.append(scripts_dir / exe_name)
+        else:
+            candidates.extend([
+                Path.home() / ".local/bin" / exe_name,
+                Path("/usr/local/bin") / exe_name,
+            ])
+
+            if sys.platform == "darwin":
+                pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
+                candidates.append(Path.home() / f"Library/Python/{pyver}/bin" / exe_name)
+
+        # --------------------------------------------------------
+        # 4. site-packages 内の実行ファイル探索
+        # --------------------------------------------------------
+        try:
+            import site
+            site_paths = []
+
+            try:
+                site_paths.extend(site.getsitepackages())
+            except Exception:
+                pass
+
+            try:
+                site_paths.append(site.getusersitepackages())
+            except Exception:
+                pass
+
+            for sp in site_paths:
+                sp = Path(sp)
+                candidates.append(sp / "yomitoku" / exe_name)
+                candidates.append(sp / "yomitoku" / "__main__.py")
+        except Exception as e:
+            print("detect_Path site-packages error:", e)
+
+        # --------------------------------------------------------
+        # 5. 候補を順にチェック
+        # --------------------------------------------------------
+        for c in candidates:
+            if c.exists():
+                resolved = c.resolve()
+                print(f"detect_Path: found via candidates → {resolved}")
+                self.yomitoku_path = str(resolved)
+                self.save_Fixed()  # ★ 同期
+                return resolved
+
+        print("detect_Path: not found")
+        self.yomitoku_path = None
+        self.save_Fixed()  # ★ None を同期
+        return None
+
+    def detect_Device(self) -> str | None:
+        # ひとまず空文字を返す実装にしておく
+        return ""
+
+    # --------------------------------------------------------
+    # ファイル選択（ini には書かない）
+    # --------------------------------------------------------
+    def select_files(self):
+        last_dir = self.last_file_dir or ""
+
+        patterns = " ".join(f"*{ext}" for ext in self.SUPPORTED_EXT)
+        name_filter = f"対応ファイル ({patterns})"
+
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "ファイルを選択",
+            last_dir,
+            name_filter
+        )
+        if not files:
+            return
+
+        folder = str(Path(files[0]).parent)
+        self.last_file_dir = folder
+
+        unique = []
+        seen = set()
+        for f in files:
+            p = Path(f).resolve()
+            if p.suffix.lower() in self.SUPPORTED_EXT and p not in seen:
+                seen.add(p)
+                unique.append(p)
+
+        self.file_list.clear()
+        self.input_paths = []
+        for p in unique:
+            self.file_list.addItem(str(p))
+            self.input_paths.append(p)
+
+        self.reset_run_button()
+
+    # --------------------------------------------------------
+    # フォルダ選択（ini には書かない）
+    # --------------------------------------------------------
+    def select_folder(self):
+        last_dir = self.last_folder_dir or ""
+        folder = QFileDialog.getExistingDirectory(self, "フォルダを選択", last_dir)
+        if not folder:
+            return
+
+        self.last_folder_dir = folder  # 保存は closeEvent 時
+
+        self.file_list.clear()
+        self.input_paths = []
+
+        path = Path(folder)
+        files = sorted(
+            f for f in path.iterdir()
+            if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXT
+        )
+        for f in files:
+            self.file_list.addItem(str(f))
+            self.input_paths.append(f)
+
+        self.reset_run_button()
+
+    # --------------------------------------------------------
+    # 出力先選択（ini には書かない）
+    # --------------------------------------------------------
+    def select_output(self):
+        folder = QFileDialog.getExistingDirectory(self, "出力先フォルダ")
+        if folder:
+            self.output_dir = Path(folder)
+
+    # --------------------------------------------------------
+    # 図保存先選択（Advanced UI）
+    # --------------------------------------------------------
+    def select_figure_dir(self):
+        folder = QFileDialog.getExistingDirectory(self, "図の保存先フォルダ")
+        if folder and hasattr(self, "figure_dir_input"):
+            self.figure_dir_input.setText(folder)
+
+    # --------------------------------------------------------
+    # create_Option（新仕様・条件厳守）
+    # --------------------------------------------------------
+    def create_Option(self, input_path: Path, base_outdir: Path | None) -> list[str]:
+        cmd: list[str] = []
+
+        # -f（format）
+        fmt = self.format_box.currentData() or "pdf"
+        cmd += ["-f", fmt]
+
+        # -v（vis）
+        if self.vis == "1":
+            cmd.append("-v")
+
+        # -o（outdir）
+        outdir = base_outdir if base_outdir else input_path.parent
+        cmd += ["-o", str(outdir)]
+
+        # -l（lite）
+        if self.lite_check.isChecked():
+            cmd.append("-l")
+
+        # -d（device）
+        if self.device:
+            cmd += ["-d", self.device]
+
+        # --td_cfg
+        if self.td_cfg:
+            cmd += ["--td_cfg", self.td_cfg]
+
+        # --tr_cfg
+        if self.tf_cfg:
+            cmd += ["--tr_cfg", self.tf_cfg]
+
+        # --lp_cfg
+        if self.lp_cfg:
+            cmd += ["--lp_cfg", self.lp_cfg]
+
+        # --tsr_cfg
+        if self.tsr_cfg:
+            cmd += ["--tsr_cfg", self.tsr_cfg]
+
+        # --ignore_line_break
+        if self.ignore_lb_check.isChecked():
+            cmd.append("--ignore_line_break")
+
+        # --figure
+        figure_enabled = self.figure_check.isChecked()
+        if figure_enabled:
+            cmd.append("--figure")
+
+        # --figure_letter
+        if figure_enabled and self.figure_letter_check.isChecked():
+            cmd.append("--figure_letter")
+
+        # --figure_width
+        fig_width = self.figure_width_input.text().strip()
+        if figure_enabled and fig_width:
+            cmd += ["--figure_width", fig_width]
+
+        # --figure_dir
+        if figure_enabled:
+            fig_dir = ""
+            if hasattr(self, "figure_dir_input"):
+                fig_dir = self.figure_dir_input.text().strip()
+            if not fig_dir:
+                fig_dir = str(outdir)
+            cmd += ["--figure_dir", fig_dir]
+
+        encoding = self.encoding_box.currentData() or "utf-8"
+        cmd += ["--encoding", encoding]
+
+        # combine（pdf のみ）
+        is_pdf = input_path.suffix.lower() == ".pdf"
+        if is_pdf and fmt == "pdf" and self.combine_check.isChecked():
+            cmd.append("--combine")
+
+        # --ignore_meta
+        if self.ignore_meta_check.isChecked():
+            cmd.append("--ignore_meta")
+
+        # --reading_order
+        reading_order = self.direction_box.currentData() or "auto"
+        cmd += ["--reading_order", reading_order]
+
+        # --font_path（pdf のみ）
+        if fmt == "pdf" and self.font_path:
+            cmd += ["--font_path", self.font_path]
+
+        # --dpi（pdf のみ）
+        dpi_text = self.dpi_box.currentText().strip()
+        if is_pdf and dpi_text:
+            cmd += ["--dpi", dpi_text]
+
+        # --pages（pdf のみ）
+        pages_raw = self.pages_input.text().strip()
+        if is_pdf and pages_raw and pages_raw != "0":
+            cmd += ["--pages", pages_raw]
+
+        # ★ 最後に入力ファイル（arg1）
+        cmd.append(str(input_path))
+
+        return cmd
+
+    # --------------------------------------------------------
+    # run_yomitoku
+    # --------------------------------------------------------
+    def run_yomitoku(self):
+        """
+        現在の GUI 設定からコマンドライン引数を生成し、
+        YomiTokuWorker にまとめて渡して実行する。
+        """
+        if not self.input_paths:
+            self.log("入力が選択されていません。")
+            return
+
+        exe_path = getattr(self, "yomitoku_path", None)
+        if not exe_path:
+            self.log("YomiToku のパスが設定されていません。")
+            return
+
+        # Advanced を最新化
+        self.load_Advanced()
+
+        self.total_files = len(self.input_paths)
+
+        base_outdir = self.output_dir  # None の場合は create_Option 側で input.parent を使う
+
+        self.disable_ui()
+        self.reset_run_button()
+
+        cmd_list: list[list[str]] = []
+        for input_path in self.input_paths:
+            cmd = self.create_Option(input_path, base_outdir)
+            cmd_list.append(cmd)
+
+        self.thread = QThread()
+        self.worker = YomiTokuWorker(exe_path, cmd_list)
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.run)
+        self.worker.log_signal.connect(self.log)
+        self.worker.progress_signal.connect(self.update_run_button)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.finished.connect(self.enable_ui)
+
+        self.thread.start()
+        self.log("=== スレッド開始 ===")
+
+    # --------------------------------------------------------
+    # closeEvent
     # --------------------------------------------------------
     def closeEvent(self, event):
 
-        # 設定保存（save_settings=1 のときのみ）
-        if self.save_settings_flag:
-            self.save_all_settings()
+        # 終了時に Save セクションを読み込む
+        # （起動中に ini を編集して save_settings/save_log が変わっても反映される）
+        self.load_Save()
 
-        # ログ保存（save_log=1 のときのみ）
-        if self.save_log_flag:
+        # Save セクションの値を参照
+        save_settings = self.save_settings_flag
+        save_log = self.save_log_flag
+
+        # Settings セクションの保存
+        if save_settings:
+            self.save_Settings()
+
+        # ログウィンドウの保存
+        if save_log:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_name = f"YomiToku_{timestamp}.log"
@@ -659,6 +896,36 @@ class YomiTokuGUI(QWidget):
                 f.write(self.log_view.toPlainText())
 
         event.accept()
+
+    # --------------------------------------------------------
+    # Drag & Drop
+    # --------------------------------------------------------
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if not urls:
+            return
+
+        seen = set(self.input_paths)
+        new_items = []
+
+        for url in urls:
+            path = Path(url.toLocalFile()).resolve()
+            if path.exists() and path.suffix.lower() in self.SUPPORTED_EXT:
+                if path not in seen:
+                    seen.add(path)
+                    new_items.append(path)
+
+        for p in new_items:
+            self.input_paths.append(p)
+            self.file_list.addItem(str(p))
+
+        self.reset_run_button()
 
     # --------------------------------------------------------
     # 3-3. UI 構築（SDI）
@@ -750,18 +1017,6 @@ class YomiTokuGUI(QWidget):
         input_area.addLayout(right_area)
         parent_layout.addLayout(input_area)
 
-    def _remove_file_item(self, item):
-        row = self.file_list.row(item)
-        self.file_list.takeItem(row)
-
-        if 0 <= row < len(self.input_paths):
-            del self.input_paths[row]
-
-    def refresh_file_list(self):
-        self.file_list.clear()
-        for p in self.input_paths:
-            self.file_list.addItem(str(p))
-
     # --------------------------------------------------------
     # 3-3-2. 中部 UI（設定項目）
     # --------------------------------------------------------
@@ -787,19 +1042,6 @@ class YomiTokuGUI(QWidget):
         2列目: 出力設定・ページ指定
         3-4列目: 図の解析設定・保存先
         """
-
-    # --------------------------------------------------------
-    # 3-3-2. 中部 UI（設定項目）
-    # --------------------------------------------------------
-    def _build_middle_contents(self, grid):
-        """
-        中部設定ブロック（3行×4列）
-        列の意味:
-        1列目: 入力設定（DPI・書字方向）
-        2列目: 出力設定・ページ指定
-        3-4列目: 図の解析設定・保存先
-        """
-
         # --------------------------------------------------------
         # 1 行目：DPI / ヘッダー等を無視 / 高速モード / 図を抽出
         # --------------------------------------------------------
@@ -929,38 +1171,46 @@ class YomiTokuGUI(QWidget):
         dir_layout = QHBoxLayout()
         dir_layout.setContentsMargins(0, 0, 0, 0)
         dir_layout.setSpacing(4)
-
+        
         dir_label = QLabel("書字方向：")
         dir_layout.addWidget(dir_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         dir_layout.addStretch(1)
-
+        
         dir_wrap = QWidget()
         dir_wrap.setContentsMargins(0, 0, 10, 0)
         dir_wrap_layout = QHBoxLayout(dir_wrap)
         dir_wrap_layout.setContentsMargins(0, 0, 0, 0)
-
+        
         self.direction_box = QComboBox()
-        self.direction_box.addItems([
-            "自動",
-            "横書き",
-            "縦書き:上→下",
-            "縦書き:右→左",
-        ])
-        self.direction_box.setCurrentText("自動")
+        
+        # ★ 表示名と内部値を分離
+        items = [
+            ("自動", "auto"),
+            ("横書き", "left2right"),
+            ("縦書き:上→下", "top2bottom"),
+            ("縦書き:右→左", "right2left"),
+        ]
+        
+        for label, value in items:
+            self.direction_box.addItem(label, value)
+        
+        # デフォルトは「自動」
+        self.direction_box.setCurrentIndex(0)
+        
         self.direction_box.setFixedWidth(120)
         self.direction_box.setFixedHeight(28)
         self.direction_box.setToolTip(
             "画像内テキストの書字方向を指定します。<br>"
             "自動を選ぶと内容に応じて判定されます。"
         )
+        
         dir_wrap_layout.addWidget(self.direction_box)
-
         dir_layout.addWidget(dir_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
-
+        
         dir_widget = QWidget()
         dir_widget.setLayout(dir_layout)
         grid.addWidget(dir_widget, 1, 1, alignment=Qt.AlignVCenter)
-
+        
         # ▼▼▼ 文字コード ▼▼▼
         enc_layout = QHBoxLayout()
         enc_layout.setContentsMargins(0, 0, 0, 0)
@@ -976,7 +1226,22 @@ class YomiTokuGUI(QWidget):
         enc_wrap_layout.setContentsMargins(0, 0, 0, 0)
 
         self.encoding_box = QComboBox()
-        self.encoding_box.addItems(["utf-8", "shift_jis"])
+        self.encoding_box = QComboBox()
+
+        items = [
+            ("UTF-8", "utf-8"),
+            ("UTF-8 BOM", "utf-8-sig"),
+            ("SHIFT-JIS", "shift-jis"),
+            ("EUC-JP", "euc-jp"),
+            ("Windows-31J", "cp932"),
+        ]
+
+        for label, value in items:
+            self.encoding_box.addItem(label, value)
+        self.encoding_box.setItemData(self.encoding_box.findData("utf-8-sig"), "UTF-8 BOM", Qt.ToolTipRole)
+        self.encoding_box.setItemData(self.encoding_box.findData("cp932"), "Windows-31J", Qt.ToolTipRole)
+        self.encoding_box.setCurrentIndex(0)
+
         self.encoding_box.setCurrentText("utf-8")
         self.encoding_box.setFixedWidth(90)
         self.encoding_box.setFixedHeight(28)
@@ -1035,7 +1300,7 @@ class YomiTokuGUI(QWidget):
 
         self.combine_check = SwitchWidget()
         self.combine_check.setToolTip(
-            "通常１つのPDFから読み取った複数のページは一つづつのファイルに保存されますが<BR>出力がPDF場合に単一のPDFファイルに結合します。"
+            "通常１つのPDFから読み取った複数のページは一つづつのファイルに保存されますが出力がPDF場合に単一のPDFファイルに結合します。"
         )
         combine_wrap_layout.addWidget(self.combine_check)
 
@@ -1075,30 +1340,47 @@ class YomiTokuGUI(QWidget):
         fmt_layout = QHBoxLayout()
         fmt_layout.setContentsMargins(0, 0, 0, 0)
         fmt_layout.setSpacing(4)
-
+        
         fmt_label = QLabel("出力形式：")
         fmt_layout.addWidget(fmt_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         fmt_layout.addStretch(1)
-
+        
         fmt_wrap = QWidget()
         fmt_wrap.setContentsMargins(0, 0, 10, 0)
         fmt_wrap_layout = QHBoxLayout(fmt_wrap)
         fmt_wrap_layout.setContentsMargins(0, 0, 0, 0)
-
+        
         self.format_box = QComboBox()
-        self.format_box.addItems(["html", "md", "json", "csv", "pdf"])
-        self.format_box.setCurrentText("pdf")
+        
+        # ★ 表示名と内部値を分離
+        items = [
+            ("HTML", "html"),
+            ("Markdown", "md"),
+            ("JSON", "json"),
+            ("CSV", "csv"),
+            ("PDF", "pdf"),
+        ]
+        
+        for label, value in items:
+            self.format_box.addItem(label, value)
+        
+        # デフォルトは PDF
+        index = self.format_box.findData("pdf")
+        if index >= 0:
+            self.format_box.setCurrentIndex(index)
+
+        self.format_box.setItemData(self.format_box.findData("md"), "MarkDown", Qt.ToolTipRole)
         self.format_box.setFixedWidth(80)
         self.format_box.setFixedHeight(28)
         self.format_box.setToolTip("OCR結果の保存形式を選択します。")
+        
         fmt_wrap_layout.addWidget(self.format_box)
-
         fmt_layout.addWidget(fmt_wrap, alignment=Qt.AlignRight | Qt.AlignVCenter)
-
+        
         fmt_widget = QWidget()
         fmt_widget.setLayout(fmt_layout)
         grid.addWidget(fmt_widget, 2, 2, alignment=Qt.AlignVCenter)
-
+        
         # ▼▼▼ 図の幅(px) ▼▼▼
         width_layout = QHBoxLayout()
         width_layout.setContentsMargins(0, 0, 0, 0)
@@ -1225,244 +1507,17 @@ class YomiTokuGUI(QWidget):
             "}"
         )
 
-    # --------------------------------------------------------
-    # 3-5. Drag & Drop（ファイル追加）
-    # --------------------------------------------------------
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    def _remove_file_item(self, item):
+        row = self.file_list.row(item)
+        self.file_list.takeItem(row)
 
-    def dropEvent(self, event):
-        urls = event.mimeData().urls()
-        if not urls:
-            return
+        if 0 <= row < len(self.input_paths):
+            del self.input_paths[row]
 
-        for url in urls:
-            path = Path(url.toLocalFile())
-            if path.exists():
-                self.input_paths.append(path)
-                self.file_list.addItem(str(path))
-
-        self.log(f"{len(urls)} 件をドロップで追加しました")
-        self.reset_run_button()
-
-    # --------------------------------------------------------
-    # 3-6. 入力・出力選択
-    # --------------------------------------------------------
-    def select_files(self):
-        last_dir = self.config.get("Settings", "last_file_dir", fallback="")
-
-        patterns = " ".join(f"*{ext}" for ext in self.SUPPORTED_EXT)
-        name_filter = f"対応ファイル ({patterns})"
-
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "ファイルを選択",
-            last_dir,
-            name_filter
-        )
-
-        if not files:
-            return
-
-        folder = str(Path(files[0]).parent)
-        self.config["Settings"]["last_file_dir"] = folder
-        self.save_config()
-
+    def refresh_file_list(self):
         self.file_list.clear()
-        self.input_paths = []
-        for f in files:
-            path = Path(f)
-            if path.suffix.lower() in self.SUPPORTED_EXT:
-                self.file_list.addItem(str(path))
-                self.input_paths.append(path)
-
-        self.reset_run_button()
-
-    def select_folder(self):
-        last_dir = self.config.get("Settings", "last_folder_dir", fallback="")
-
-        folder = QFileDialog.getExistingDirectory(self, "フォルダを選択", last_dir)
-        if not folder:
-            return
-
-        self.config["Settings"]["last_folder_dir"] = folder
-        self.save_config()
-
-        self.file_list.clear()
-        self.input_paths = []
-
-        path = Path(folder)
-        files = sorted(
-            f for f in path.iterdir()
-            if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXT
-        )
-
-        for f in files:
-            self.file_list.addItem(str(f))
-            self.input_paths.append(f)
-
-        self.reset_run_button()
-
-    def select_output(self):
-        folder = QFileDialog.getExistingDirectory(self, "出力先フォルダ")
-        if folder:
-            self.output_dir = Path(folder)
-            if "Settings" not in self.config:
-                self.config["Settings"] = {}
-            self.config["Settings"]["output_dir"] = str(self.output_dir)
-            self.save_config()
-
-    def select_figure_dir(self):
-        folder = QFileDialog.getExistingDirectory(self, "図の保存先フォルダ")
-        if folder:
-            self.figure_dir_input.setText(folder)
-
-    # 3-7. 実行処理（スレッド化）
-    # --------------------------------------------------------
-    def run_yomitoku(self):
-        if not self.input_paths:
-            self.log("入力が選択されていません。")
-            return
-
-        self.total_files = len(self.input_paths)
-
-        exe_path = self.yomitoku_path
-        if exe_path is None:
-            self.log("YomiToku のパスが設定されていません。")
-            return
-
-        fmt = self.format_box.currentText()
-
-        # 出力先
-        if getattr(self, "output_dir", None) is None:
-            first = self.input_paths[0]
-            outdir_path = first.parent if first.is_file() else first
-        else:
-            outdir_path = self.output_dir
-
-        # DPI
-        dpi_text = self.dpi_box.currentText().strip()
-        if not dpi_text.isdigit():
-            self.log("DPI が不正なため 200 にリセットしました。")
-            dpi_text = "200"
-            self.dpi_box.setCurrentText("200")
-
-        dpi_value = int(dpi_text)
-        if dpi_value <= 0 or dpi_value > 2000:
-            self.log("エラー: DPI の値が対応範囲外です。")
-            return
-
-        dpi = str(dpi_value)
-
-        # 書字方向
-        ro_map = {
-            "自動": "auto",
-            "横書き": "left2right",
-            "縦書き:上→下": "top2bottom",
-            "縦書き:右→左": "right2left"
-        }
-        reading_order = ro_map[self.direction_box.currentText()]
-
-        # ページ指定
-        pages_raw = self.pages_input.text().strip()
-        if pages_raw == "" or pages_raw == "0":
-            pages = ""
-        else:
-            import re
-            pattern = r"^(\d+(-\d+)?)(,(\d+(-\d+)?))*$"
-            if not re.match(pattern, pages_raw):
-                self.log("ページ指定の形式が不正です。例：1,3-5")
-                return
-            pages = pages_raw
-
-        # ▼▼▼ 新しい GUI 項目の取得（ここが重要） ▼▼▼
-        figure = self.figure_check.isChecked()
-        figure_letter = self.figure_letter_check.isChecked()
-        figure_width = self.figure_width_input.text().strip()
-        combine = self.combine_check.isChecked()
-        ignore_line_break = self.ignore_lb_check.isChecked()
-        ignore_meta = self.ignore_meta_check.isChecked()
-        encoding = self.encoding_box.currentText()
-
-        # ▼▼▼ 設定ファイルから内部設定を取得 ▼▼▼
-        s = self.config["Settings"]
-        
-        font_path = s.get("font_path", "")
-        td_cfg = s.get("td_cfg", "")
-        tr_cfg = s.get("tr_cfg", "")
-        lp_cfg = s.get("lp_cfg", "")
-        tsr_cfg = s.get("tsr_cfg", "")
-        figure_dir = s.get("figure_dir", "")
-
-        # ▼▼▼ figure_dir の決定ロジック ▼▼▼
-        # ini に設定がある場合はそれを使う
-        if figure_dir:
-            final_figure_dir = figure_dir
-        else:
-            # 無い場合は入力ファイルと同じフォルダ
-            first_input = self.input_paths[0]
-            if first_input.is_file():
-                final_figure_dir = str(first_input.parent)
-            else:
-                final_figure_dir = str(first_input)
-
-        # Worker に渡す値として上書き
-        figure_dir = final_figure_dir
-
-        # モード
-        lite = self.lite_check.isChecked()
-
-        # ▼▼▼ vis は ini から取得
-        vis = False
-        if "Settings" in self.config:
-            vis = self.config["Settings"].get("vis", "0") == "1"
-
-        # UI を無効化
-        self.disable_ui()
-        self.reset_run_button()
-
-        # スレッド開始
-        self.thread = QThread()
-        self.worker = YomiTokuWorker(
-            exe_path,
-            self.input_paths,
-            outdir_path,
-            fmt,
-            dpi,
-            reading_order,
-            pages,
-            figure,
-            figure_letter,
-            figure_width,
-            combine,
-            ignore_line_break,
-            ignore_meta,
-            encoding,
-            lite,
-            vis,
-            self.device,
-            font_path,
-            td_cfg,
-            tr_cfg,
-            lp_cfg,
-            tsr_cfg,
-            figure_dir
-        )
-        self.worker.moveToThread(self.thread)
-
-        self.thread.started.connect(self.worker.run)
-        self.worker.log_signal.connect(self.log)
-        self.worker.progress_signal.connect(self.update_run_button)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.finished.connect(self.enable_ui)
-
-        self.thread.start()
-        self.log("=== スレッド開始 ===")
+        for p in self.input_paths:
+            self.file_list.addItem(str(p))
 
 # ============================================================
 # 4. Main
@@ -1470,37 +1525,7 @@ class YomiTokuGUI(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # --------------------------------------------------------
-    # 4-1. ツールチップの挙動（即表示・無制限）
-    # --------------------------------------------------------
-    class TooltipStyle(QProxyStyle):
-        def styleHint(self, hint, option=None, widget=None, returnData=None):
-            if hint == QStyle.SH_ToolTip_WakeUpDelay:
-                return 100
-            if hint == QStyle.SH_ToolTip_FallAsleepDelay:
-                return 0
-            return super().styleHint(hint, option, widget, returnData)
-
-    app.setStyle(TooltipStyle())
-
-    # --------------------------------------------------------
-    # 4-2. ツールチップの見た目（背景色・文字色・幅など）
-    # --------------------------------------------------------
-    app.setStyleSheet("""
-        QToolTip {
-            background-color: #333333;
-            color: #ffffff;
-            border: 1px solid #aaaaaa;
-            padding: 6px;
-            font-size: 12pt;
-            max-width: 1000px;
-            white-space: nowrap;
-        }
-    """)
-
-    # --------------------------------------------------------
-    # 4-3. GUI 起動
-    # --------------------------------------------------------
     gui = YomiTokuGUI()
     gui.show()
+
     sys.exit(app.exec())
