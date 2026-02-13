@@ -4,6 +4,26 @@
 import subprocess
 import configparser
 import sys
+import os
+
+def parse_startup_options():
+    options = {
+        "td": None,
+        "tr": None,
+        "lp": None,
+        "tsr": None
+    }
+
+    for arg in sys.argv[1:]:
+        if "=" in arg:
+            key, value = arg.split("=", 1)
+            key = key.lower().strip()
+            value = value.strip('"').strip("'")
+            if key in options:
+                options[key] = value
+
+    return options
+
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -24,7 +44,28 @@ from PySide6.QtCore import (
     QRect, QSize
 )
 
-INI_FILE = "YomiToku_GUI.ini"
+def get_profile_path():
+    for arg in sys.argv[1:]:
+        if arg.startswith("profile="):
+            profile = arg.split("=", 1)[1].strip('"').strip("'")
+
+            path = Path(profile)
+
+            # profiles/xxx.ini の可能性
+            if not path.exists():
+                alt = Path("profiles") / profile
+                if alt.exists():
+                    return str(alt)
+
+                # ここでは作らない！
+                # create_Config() に任せる
+                return str(path)
+
+            return str(path)
+
+    return "YomiToku_GUI.ini"
+
+INI_FILE = get_profile_path()
 
 # ============================================================
 # 2. クラス：SwitchWidget（ON/OFF スイッチ UI）
@@ -167,7 +208,7 @@ class YomiTokuGUI(QWidget):
         self.setFont(font)
 
         # ini / config
-        self.config_path = Path("YomiToku_GUI.ini")
+        self.config_path = Path(get_profile_path())
         self.config = configparser.ConfigParser()
 
         # 内部状態
@@ -231,7 +272,13 @@ class YomiTokuGUI(QWidget):
     # ログ表示
     # --------------------------------------------------------
     def log(self, text: str):
+        # GUI 表示のみ
         self.log_view.append(text)
+    
+        # log_dir がまだ無い場合はデフォルトにする
+        # （closeEvent で保存するため、ここで設定しておく）
+        if not hasattr(self, "log_dir") or not self.log_dir:
+            self.log_dir = str(Path(__file__).resolve().parent)
 
     # --------------------------------------------------------
     # ini チェック＆補完
@@ -315,6 +362,7 @@ class YomiTokuGUI(QWidget):
         cfg["Save"] = {
             "save_settings": "0",
             "save_log": "0",
+            "log_dir": ""
         }
 
         with open(self.config_path, "w", encoding="utf-8") as f:
@@ -422,6 +470,13 @@ class YomiTokuGUI(QWidget):
         self.save_settings_flag = s.get("save_settings", "0") == "1"
         self.save_log_flag = s.get("save_log", "0") == "1"
 
+        # ログ保存先
+        self.log_dir = s.get("log_dir", "").strip()
+        if not self.log_dir:
+            # 未指定なら実行ファイルと同じフォルダ
+            self.log_dir = str(Path(__file__).resolve().parent)
+        Path(self.log_dir).mkdir(parents=True, exist_ok=True)
+        
     # --------------------------------------------------------
     # Fixed 保存
     # --------------------------------------------------------
@@ -882,27 +937,32 @@ class YomiTokuGUI(QWidget):
     # closeEvent
     # --------------------------------------------------------
     def closeEvent(self, event):
-
-        # 終了時に Save セクションを読み込む
-        # （起動中に ini を編集して save_settings/save_log が変わっても反映される）
+    
+        # Save セクションを再読み込み（起動中に変更されていても反映）
         self.load_Save()
-
-        # Save セクションの値を参照
+    
         save_settings = self.save_settings_flag
         save_log = self.save_log_flag
-
+    
         # Settings セクションの保存
         if save_settings:
             self.save_Settings()
-
+    
         # ログウィンドウの保存
         if save_log:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_name = f"YomiToku_{timestamp}.log"
-            with open(log_name, "w", encoding="utf-8") as f:
-                f.write(self.log_view.toPlainText())
-
+    
+            # 保存先は log_dir に統一
+            log_path = Path(self.log_dir) / log_name
+    
+            try:
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.write(self.log_view.toPlainText())
+            except Exception as e:
+                self.log_view.append(f"[Log Save Error] {e}")
+    
         event.accept()
 
     # --------------------------------------------------------
