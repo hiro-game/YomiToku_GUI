@@ -345,6 +345,10 @@ class YomiTokuGUI(QWidget):
             "reading_order": "auto",
             "dpi": "200",
             "pages": "",
+            "disable_rec_orientation_fallback": "0",
+            "rec_orientation_fallback_thresh": "",
+            "ignore_ruby": "0",
+            "ruby_threshold": "",
             "last_file_dir": "",
             "last_folder_dir": "",
         }
@@ -420,6 +424,10 @@ class YomiTokuGUI(QWidget):
         self.ignore_lb_check.setChecked(s.get("ignore_line_break", "0") == "1")
         self.ignore_meta_check.setChecked(s.get("ignore_meta", "0") == "1")
         self.combine_check.setChecked(s.get("combine", "0") == "1")
+        self.disable_orientation_fallback_check.setChecked(s.get("disable_rec_orientation_fallback", "0") == "1")
+        self.orientation_fallback_thresh_input.setText(s.get("rec_orientation_fallback_thresh", ""))
+        self.ignore_ruby_check.setChecked(s.get("ignore_ruby", "0") == "1")
+        self.ruby_threshold_input.setText(s.get("ruby_threshold", ""))
 
     # --------------------------------------------------------
     # Advanced 読み込み（ini → 内部変数 / Advanced UI）
@@ -526,7 +534,6 @@ class YomiTokuGUI(QWidget):
     # Settings 保存（GUI → ini）
     # --------------------------------------------------------
     def save_Settings(self):
-        # Settings セクションの新しい内容（公式ヘルプ順）
         new_settings = []
         new_settings.append("[Settings]\n")
         new_settings.append(f"format = {self.format_box.currentData()}\n")
@@ -542,6 +549,13 @@ class YomiTokuGUI(QWidget):
         new_settings.append(f"reading_order = {self.direction_box.currentData()}\n")
         new_settings.append(f"dpi = {self.dpi_box.currentText()}\n")
         new_settings.append(f"pages = {self.pages_input.text()}\n")
+
+        # ★ 新オプション4つ
+        new_settings.append(f"disable_rec_orientation_fallback = {'1' if self.disable_orientation_fallback_check.isChecked() else '0'}\n")
+        new_settings.append(f"rec_orientation_fallback_thresh = {self.orientation_fallback_thresh_input.text()}\n")
+        new_settings.append(f"ignore_ruby = {'1' if self.ignore_ruby_check.isChecked() else '0'}\n")
+        new_settings.append(f"ruby_threshold = {self.ruby_threshold_input.text()}\n")
+
         new_settings.append(f"last_file_dir = {self.last_file_dir}\n")
         new_settings.append(f"last_folder_dir = {self.last_folder_dir}\n")
 
@@ -549,37 +563,29 @@ class YomiTokuGUI(QWidget):
         with open(self.config_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        # 新しい ini を構築
         new_lines = []
         inside_settings = False
 
         for line in lines:
             stripped = line.strip()
 
-            # Settings セクション開始
             if stripped.lower() == "[settings]":
                 inside_settings = True
                 new_lines.extend(new_settings)
                 continue
 
-            # 次のセクションに入ったら Settings 終了
             if inside_settings and stripped.startswith("[") and stripped.endswith("]"):
                 inside_settings = False
 
-            # Settings 内の古い行はスキップ
             if inside_settings:
                 continue
 
-            # Settings 以外はそのまま残す
             new_lines.append(line)
 
-            # 書き戻し前に空行を除去
-            new_lines = [line for line in new_lines if line.strip() != ""]
+        # ★ 空行除去はここでまとめて
+        new_lines = [line for line in new_lines if line.strip() != ""]
 
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-
-        # 書き戻し
+        # ★ 書き戻しは最後に1回だけ
         with open(self.config_path, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
 
@@ -880,6 +886,24 @@ class YomiTokuGUI(QWidget):
         pages_raw = self.pages_input.text().strip()
         if is_pdf and pages_raw and pages_raw != "0":
             cmd += ["--pages", pages_raw]
+
+        # --disable-rec-orientation-fallback
+        if self.disable_orientation_fallback_check.isChecked():
+            cmd.append("--disable-rec-orientation-fallback")
+
+        # --rec-orientation-fallback-thresh
+        thresh = self.orientation_fallback_thresh_input.text().strip()
+        if thresh:
+            cmd += ["--rec-orientation-fallback-thresh", thresh]
+
+        # --ignore_ruby
+        if self.ignore_ruby_check.isChecked():
+            cmd.append("--ignore_ruby")
+
+        # --ruby_threshold
+        ruby_th = self.ruby_threshold_input.text().strip()
+        if ruby_th:
+            cmd += ["--ruby_threshold", ruby_th]
 
         # ★ 最後に入力ファイル（arg1）
         cmd.append(str(input_path))
@@ -1480,6 +1504,86 @@ class YomiTokuGUI(QWidget):
         width_widget = QWidget()
         width_widget.setLayout(width_layout)
         grid.addWidget(width_widget, 2, 3, alignment=Qt.AlignVCenter)
+
+        # --------------------------------------------------------
+        # 4 行目：向き補正フォールバック / しきい値 / ルビ無視 / ルビしきい値
+        # --------------------------------------------------------
+
+        # ▼▼▼ 向き補正フォールバック無効 ▼▼▼
+        orf_layout = QHBoxLayout()
+        orf_layout.setContentsMargins(0, 0, 10, 0)
+        orf_layout.setSpacing(4)
+
+        orf_label = QLabel("向き補正フォールバック無効：")
+        orf_layout.addWidget(orf_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        orf_layout.addStretch(1)
+
+        self.disable_orientation_fallback_check = SwitchWidget()
+        self.disable_orientation_fallback_check.setToolTip(
+            "OCRの向き補正フォールバック処理を無効化します。"
+        )
+        orf_layout.addWidget(self.disable_orientation_fallback_check, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        orf_widget = QWidget()
+        orf_widget.setLayout(orf_layout)
+        grid.addWidget(orf_widget, 3, 0, alignment=Qt.AlignVCenter)
+
+        # ▼▼▼ 向き補正しきい値 ▼▼▼
+        orfth_layout = QHBoxLayout()
+        orfth_layout.setContentsMargins(0, 0, 10, 0)
+        orfth_layout.setSpacing(4)
+
+        orfth_label = QLabel("向き補正しきい値：")
+        orfth_layout.addWidget(orfth_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        orfth_layout.addStretch(1)
+
+        self.orientation_fallback_thresh_input = QLineEdit()
+        self.orientation_fallback_thresh_input.setPlaceholderText("例：0.75")
+        self.orientation_fallback_thresh_input.setFixedWidth(80)
+        self.orientation_fallback_thresh_input.setFixedHeight(28)
+        orfth_layout.addWidget(self.orientation_fallback_thresh_input, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        orfth_widget = QWidget()
+        orfth_widget.setLayout(orfth_layout)
+        grid.addWidget(orfth_widget, 3, 1, alignment=Qt.AlignVCenter)
+
+        # ▼▼▼ ルビ無視 ▼▼▼
+        ruby_layout = QHBoxLayout()
+        ruby_layout.setContentsMargins(0, 0, 10, 0)
+        ruby_layout.setSpacing(4)
+
+        ruby_label = QLabel("ルビを無視：")
+        ruby_layout.addWidget(ruby_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        ruby_layout.addStretch(1)
+
+        self.ignore_ruby_check = SwitchWidget()
+        self.ignore_ruby_check.setToolTip(
+            "OCR結果からルビ（ふりがな）を除外します。"
+        )
+        ruby_layout.addWidget(self.ignore_ruby_check, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        ruby_widget = QWidget()
+        ruby_widget.setLayout(ruby_layout)
+        grid.addWidget(ruby_widget, 3, 2, alignment=Qt.AlignVCenter)
+
+        # ▼▼▼ ルビしきい値 ▼▼▼
+        rubyth_layout = QHBoxLayout()
+        rubyth_layout.setContentsMargins(0, 0, 0, 0)
+        rubyth_layout.setSpacing(4)
+
+        rubyth_label = QLabel("ルビしきい値：")
+        rubyth_layout.addWidget(rubyth_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        rubyth_layout.addStretch(1)
+
+        self.ruby_threshold_input = QLineEdit()
+        self.ruby_threshold_input.setPlaceholderText("例：2.0")
+        self.ruby_threshold_input.setFixedWidth(80)
+        self.ruby_threshold_input.setFixedHeight(28)
+        rubyth_layout.addWidget(self.ruby_threshold_input, alignment=Qt.AlignRight | Qt.AlignVCenter)
+
+        rubyth_widget = QWidget()
+        rubyth_widget.setLayout(rubyth_layout)
+        grid.addWidget(rubyth_widget, 3, 3, alignment=Qt.AlignVCenter)
 
     # --------------------------------------------------------
     # 3-3-3. 下部 UI（実行ボタン・ログ）
